@@ -1,100 +1,67 @@
+import json
 import os
-import asyncio
-from datetime import datetime
-from uuid import uuid4
 from dotenv import load_dotenv
-
-from uagents import Agent, Context, Protocol
-from uagents_core.contrib.protocols.chat import (
-    ChatAcknowledgement,
-    ChatMessage,
-    EndSessionContent,
-    StartSessionContent,
-    TextContent,
-    chat_protocol_spec,
-)
-from langchain_core.messages import HumanMessage
+from uagents_core.contrib.protocols.chat import ChatMessage, MetadataContent
+from uagents_core.contrib.protocols.chat.cards import extract_card_response
+import agentverse_sdk.langgraph.content as av_content
+from agentverse_sdk.langgraph import init as agentverse_init
 from graph import india_graph
 
 load_dotenv()
 
-# --- Asyncio event loop fix for Python 3.12 / 3.14 ---
-try:
-    loop = asyncio.get_event_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-# ----------------------------------------------------
+# 1. Ensure MetadataContent (Interactive Cards for ASI:One) is enabled for outbound responses
+_orig_convert = av_content._convert_content_block
+async def _patched_convert(block, upload=None):
+    if block.get("type") == "metadata":
+        return MetadataContent(type="metadata", metadata=block.get("metadata", {}))
+    return await _orig_convert(block, upload)
+av_content._convert_content_block = _patched_convert
 
-MAILBOX_KEY = os.getenv("AGENTVERSE_MAILBOX_KEY")
-SEED = os.getenv("AGENT_SEED", "india_gemini_agent_secret_seed_phrase_2026")
+# 2. Ensure inbound form submissions from ASI:One interactive cards are forwarded to LangGraph
+_orig_chat_message_text = ChatMessage.text
+def _safe_chat_message_text(self) -> str:
+    # 1. Check for interactive card submission in MetadataContent FIRST!
+    for block in self.content:
+        if isinstance(block, MetadataContent):
+            resp = extract_card_response(block)
+            if resp:
+                if resp.selection:
+                    return json.dumps(resp.selection)
+                if resp.text:
+                    return resp.text
+            meta = getattr(block, "metadata", {}) or {}
+            if "selection" in meta:
+                sel = meta["selection"]
+                return sel if isinstance(sel, str) else json.dumps(sel)
+            if "card_payload" in meta and "selection" in str(meta.get("card_payload", "")):
+                try:
+                    payload = json.loads(meta["card_payload"])
+                    if "selection" in payload:
+                        return json.dumps(payload["selection"])
+                except Exception:
+                    pass
 
-is_valid_mailbox = bool(MAILBOX_KEY and "your_agentverse_mailbox" not in MAILBOX_KEY)
+    # 2. If no card submission found, return raw text content
+    return _orig_chat_message_text(self).strip()
+ChatMessage.text = _safe_chat_message_text
 
-agent = Agent(
-    name="india_intelligence_agent",
-    seed=SEED,
-    mailbox=f"{MAILBOX_KEY}@https://agentverse.ai" if is_valid_mailbox else None,
-    loop=loop,
+AGENT_URI = os.getenv(
+    "AGENT_URI",
+    "https://india-intel-agent:533ce0d7182046a6bdd46a621da5bdfa@agentverse.ai/India%20Intel%20Agent",
 )
 
-# Setup standard Agent Chat Protocol (ACP)
-chat_proto = Protocol(spec=chat_protocol_spec)
+# 1. Initialize Agentverse LangGraph adapter with Mailbox relay
+agentverse_init(AGENT_URI, mailbox=True)
 
-def create_text_chat(text: str) -> ChatMessage:
-    return ChatMessage(
-        timestamp=datetime.utcnow(),
-        msg_id=uuid4(),
-        content=[TextContent(type="text", text=text)],
-    )
-
-# Message Handler for ASI:One
-@chat_proto.on_message(ChatMessage)
-async def handle_message(ctx: Context, sender: str, msg: ChatMessage):
-    # Acknowledge receipt immediately
-    await ctx.send(
-        sender,
-        ChatAcknowledgement(timestamp=datetime.utcnow(), acknowledged_msg_id=msg.msg_id),
-    )
-
-    for item in msg.content:
-        if isinstance(item, StartSessionContent):
-            ctx.logger.info(f"Session started with {sender}")
-            welcome_text = (
-                "🇮🇳 **Namaste! Welcome to India Intelligence & Travel Concierge (@india)**\n\n"
-                "Powered by Google Gemini & LangGraph on the ASI Alliance network.\n\n"
-                "Ask me to plan a heritage trip to **Agra**, **Jaipur**, **Delhi**, **Mumbai**, "
-                "or **any city across India**!"
-            )
-            await ctx.send(sender, create_text_chat(welcome_text))
-
-        elif isinstance(item, TextContent):
-            user_prompt = item.text
-            ctx.logger.info(f"Received query: '{user_prompt}' from {sender}")
-
-            try:
-                # Run the LangGraph StateGraph asynchronously
-                inputs = {"messages": [HumanMessage(content=user_prompt)]}
-                state_result = await india_graph.ainvoke(inputs)
-
-                reply_text = state_result.get(
-                    "final_output", "I was unable to process the itinerary. Please try again."
-                )
-            except Exception as e:
-                ctx.logger.error(f"Error during LangGraph execution: {e}")
-                reply_text = f"An error occurred while compiling your itinerary: {str(e)}"
-
-            await ctx.send(sender, create_text_chat(reply_text))
-
-        elif isinstance(item, EndSessionContent):
-            ctx.logger.info(f"Session ended with {sender}")
-
-# Include protocol & publish manifest to Agentverse
-agent.include(chat_proto, publish_manifest=True)
+# 2. Expose the compiled LangGraph workflow for Agentverse
+graph = india_graph
 
 if __name__ == "__main__":
-    print(f"\n========================================================")
-    print(f"🚀 India Intelligence Agent is running!")
-    print(f"📍 Agent Address: {agent.address}")
-    print(f"========================================================\n")
-    agent.run()
+    import sys
+    from agentverse_sdk.langgraph import run as agentverse_run
+
+    # Default to 'dev' command if no args passed
+    if len(sys.argv) == 1:
+        sys.argv.append("dev")
+
+    agentverse_run()
