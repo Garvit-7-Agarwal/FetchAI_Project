@@ -2357,16 +2357,40 @@ Please select the topics and parameters for your economic analysis using the int
 
 def economy_dashboard_node(state: AgentState) -> AgentState:
     """Step 2 of Economy: Generates Structured Economic Intelligence Briefing Dashboard."""
-    user_query = get_message_content(state["messages"][-1])
+    raw_text = get_message_content(state["messages"][-1])
+    clean_query, form_params = parse_incoming_input(raw_text)
+    extracted = state.get("extracted_params") or {}
+    
+    topic = form_params.get("topic") or extracted.get("topic") or ""
+    period = form_params.get("period") or extracted.get("period") or "Current State (2024-2025)"
+    depth = form_params.get("analysis_type") or extracted.get("analysis_type") or "Executive Briefing"
+
+    topic_labels = {
+        "FinTech": "UPI, RuPay & FinTech Revolution",
+        "GDP": "Indian Economy & GDP Growth",
+        "Sectors": "Major Sectors (Services, Mfg, Agri)",
+        "Startups": "Startups & Tech Unicorns",
+        "Stock Market": "Stock Markets (NSE, BSE, NIFTY 50, SENSEX)",
+        "Titans": "Corporate Titans (Tata, Reliance, Infosys)",
+        "Manufacturing": "Manufacturing, PLI & Atmanirbhar Bharat",
+    }
+    topic_display = topic_labels.get(topic, topic)
+    topic_banner = ""
+    if topic_display:
+        topic_banner = f"\n> 🎯 **Focused Analysis Topic:** **{topic_display}** | **Time Period:** {period} | **Depth:** {depth}\n"
     
     prompt = f"""
 You are the Chief Economic Intelligence Specialist of 🇮🇳 India Educational AI Intelligence Agent (@india-intel-agent).
-User Query / Form Submission: "{user_query}"
+User Query / Form Submission: "{clean_query}"
+Requested Topic Focus: {topic_display or 'Overview'}
+Time Period: {period}
+Analysis Depth: {depth}
 
 Reference Grounding Base:
 {DOMAIN_CONTEXTS['economy_finance']}
 
 Generate a research-grade, highly structured intelligence dashboard:
+{topic_banner}
 1. 🏛️ **Executive Economic Dashboard & Core Macro Indicators** (Clear Markdown Table with Nominal GDP, PPP rank, Growth rate 6.5-7.2%, Inflation target 4% +/- 2%, Forex reserves, UPI volume).
 2. 📊 **Key Sectors & Strategic Pillars** (Services ~54%, Manufacturing/Industry ~28%, Agriculture ~18%, MSMEs, PLI schemes).
 3. 🏢 **Corporate Titans & Conglomerates** (Tata, Reliance Industries, Infosys, TCS, L&T, HDFC Bank, Mahindra, Adani).
@@ -2375,8 +2399,8 @@ Generate a research-grade, highly structured intelligence dashboard:
 6. ⚖️ **Opportunities, Structural Risks & 2030-2047 Outlook**.
 7. 🔎 **Authoritative Sources & Citations** (Reserve Bank of India rbi.org.in, Ministry of Statistics mospi.gov.in, SEBI sebi.gov.in, World Bank).
 """
-    fallback = """# 🇮🇳 Indian Economy & Financial Markets: Intelligence Dashboard
-
+    fallback = f"""# 🇮🇳 Indian Economy & Financial Markets: Intelligence Dashboard
+{topic_banner}
 ### 📊 1. Executive Economic Dashboard & Core Macro Indicators
 | Metric | Current Official Standing | Strategic Significance |
 | :--- | :--- | :--- |
@@ -2389,7 +2413,15 @@ Generate a research-grade, highly structured intelligence dashboard:
 
 ---
 
-### 🏭 2. Structural Breakdown of Key Sectors
+### 💳 2. Digital Public Infrastructure & FinTech Revolution
+* **Unified Payments Interface (UPI):** Operates on NPCI sovereign rails, processing **>14 billion monthly transactions** with instant settlement and zero end-consumer fees.
+* **Global Footprint:** Accepted in France, UAE, Singapore, Mauritius, Sri Lanka, Bhutan, and Nepal.
+* **FinTech Ecosystem:** Over 10,000+ FinTech startups spanning digital lending, insurtech, wealthtech, and account aggregators.
+* **RuPay Global Expansion:** Indigenous card payment network rivaling global card rails.
+
+---
+
+### 🏭 3. Structural Breakdown of Key Sectors
 * **Services Sector (~54% of Gross Value Added):**
   * Premier economic growth engine driven by IT/BPM exports (TCS, Infosys, Wipro, HCLTech), telecommunications, and banking.
 * **Manufacturing & Industry (~28% of GVA):**
@@ -2399,7 +2431,7 @@ Generate a research-grade, highly structured intelligence dashboard:
 
 ---
 
-### 🏢 3. Corporate Titans & Conglomerates
+### 🏢 4. Corporate Titans & Conglomerates
 * **Tata Group:** Global conglomerate spanning salt to software, steel, automotive (Tata Motors / JLR), and aviation (Air India).
 * **Reliance Industries:** Market capitalization leader spanning petrochemicals, telecommunications (Jio 5G), and retail.
 * **Larsen & Toubro (L&T):** Premier engineering and infrastructure multinational driving national mega-projects.
@@ -2407,19 +2439,13 @@ Generate a research-grade, highly structured intelligence dashboard:
 
 ---
 
-### 📈 4. Financial Markets & Regulatory Framework
+### 📈 5. Financial Markets & Regulatory Framework
 * **Stock Exchanges:**
   * **Bombay Stock Exchange (BSE):** Founded 1875 (Asia's oldest exchange); benchmark is the **S&P BSE SENSEX** (30 bellwether stocks).
   * **National Stock Exchange (NSE):** World's largest derivatives exchange; benchmark is the **NIFTY 50**.
 * **Key Regulators:**
   * **Reserve Bank of India (RBI):** Central bank governing monetary policy, repo rates, and inflation targeting.
   * **Securities and Exchange Board of India (SEBI):** Capital markets regulator ensuring investor protection and market transparency.
-
----
-
-### 💳 5. UPI & FinTech Revolution
-* **Unified Payments Interface (UPI):** Operates on NPCI rails, processing >14 billion monthly transactions with zero consumer transaction fee.
-* **Global Footprint:** Accepted in UAE, Singapore, France, Mauritius, Sri Lanka, and Nepal.
 
 ---
 
@@ -2974,85 +3000,131 @@ def supervisor_router(state: AgentState) -> AgentState:
     raw_text = get_message_content(messages[-1])
     clean_query, form_params = parse_incoming_input(raw_text)
     q_lower = clean_query.lower()
+    form_action = str(form_params.get("action", "")).lower()
 
+    # ----------------------------------------------------
     # 0. Check for Foreign Out-of-Scope Queries (e.g. Thailand, Bangkok, Dubai, Paris, etc.)
-    foreign_matches = [
-        dest for dest in FOREIGN_DESTINATIONS 
-        if re.search(r'\b' + re.escape(dest) + r'\b', q_lower)
-    ]
-    if foreign_matches:
-        is_india_context = any(
-            term in q_lower 
-            for term in ["india", "indian", "bilateral", "trade with", "relations with", "compare to india", "vs india"]
-        )
-        if not is_india_context:
-            return {"workflow_stage": "out_of_scope", "entity_name": foreign_matches[0], "extracted_params": None}
+    # (Only evaluate for user text queries, not explicit form submissions)
+    # ----------------------------------------------------
+    if not form_action:
+        foreign_matches = [
+            dest for dest in FOREIGN_DESTINATIONS 
+            if re.search(r'\b' + re.escape(dest) + r'\b', q_lower)
+        ]
+        if foreign_matches:
+            is_india_context = any(
+                term in q_lower 
+                for term in ["india", "indian", "bilateral", "trade with", "relations with", "compare to india", "vs india"]
+            )
+            if not is_india_context:
+                return {"workflow_stage": "out_of_scope", "entity_name": foreign_matches[0], "extracted_params": None}
 
-    # 1. Landing Screen (Greetings, Menu, Start, or Empty)
-    if not clean_query or q_lower in ["hi", "hello", "hey", "namaste", "start", "menu", "options", "help", "home", "welcome", "restart"]:
+    # ----------------------------------------------------
+    # 1. Landing Screen Greetings (Only if plain text query with no form action)
+    # ----------------------------------------------------
+    if not form_action and (not clean_query or q_lower in ["hi", "hello", "hey", "namaste", "start", "menu", "options", "help", "home", "welcome", "restart"]):
         return {"workflow_stage": "landing", "entity_name": None, "extracted_params": None}
 
-    # 2. Check for Form-Driven Domain Selects or Direct Landing Page Options
-    selected_domain = str(form_params.get("domain", "")).lower()
+    # ----------------------------------------------------
+    # 2. HIGHEST PRIORITY: Explicit Form Action Submissions & Dossier Requests
+    # ----------------------------------------------------
+    # A. Economy Dossier Form Submission
+    if form_action == "economy_dossier" or form_params.get("topic") in [
+        "GDP", "Sectors", "Startups", "Stock Market", "FinTech", "Titans", "Manufacturing"
+    ]:
+        return {"workflow_stage": "economy_briefing", "entity_name": None, "extracted_params": form_params}
 
-    # Economy check
-    if (("economy" in selected_domain or "1" in selected_domain) and "choose" not in selected_domain) or q_lower in ["1", "option 1", "opt 1", "open economy", "economy"] or (
-        "economy" in q_lower and len(q_lower.split()) <= 4 and not any(kw in q_lower for kw in ["gdp", "growth", "sector", "stock", "upi", "tata", "rbi", "sebi"])
-    ):
-        return {"workflow_stage": "economy_form", "entity_name": None, "extracted_params": None}
+    # B. Culture Dossier Form Submission
+    if form_action == "culture_dossier" or (form_params.get("theme") and form_params.get("region")):
+        return {"workflow_stage": "culture_report", "entity_name": None, "extracted_params": form_params}
 
-    # Tourism check
-    if (("tourism" in selected_domain or "2" in selected_domain) and "choose" not in selected_domain) or q_lower in ["2", "option 2", "opt 2", "open tourism", "tourism"] or (
-        ("tourism" in q_lower or "travel" in q_lower) and len(q_lower.split()) <= 3 and not any(city in q_lower for city in FLAGSHIP_CITIES)
-    ):
-        return {"workflow_stage": "tourism_destinations", "entity_name": None, "extracted_params": None}
+    # C. Science Dossier Form Submission
+    if form_action == "science_dossier" or form_params.get("category"):
+        return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": form_params}
 
-    # Culture check
-    if (("culture" in selected_domain or "3" in selected_domain) and "choose" not in selected_domain) or q_lower in ["3", "option 3", "opt 3", "open culture", "culture"] or (
-        ("culture" in q_lower or "social fabric" in q_lower) and len(q_lower.split()) <= 3 and not any(kw in q_lower for kw in ["dance", "music", "festival", "north india", "south india"])
-    ):
-        return {"workflow_stage": "culture_form", "entity_name": None, "extracted_params": None}
-
-    # Science check
-    if (("science" in selected_domain or "4" in selected_domain) and "choose" not in selected_domain) or q_lower in ["4", "option 4", "opt 4", "open science", "science"] or (
-        ("science" in q_lower or "future tech" in q_lower or "technology" in q_lower) and len(q_lower.split()) <= 3 and not any(kw in q_lower for kw in ["isro", "chip", "semiconductor", "ai", "quantum", "5g"])
-    ):
-        return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": None}
-
-    # Review Card CTA actions (Confirm Trip or Modify Trip)
-    action_param = str(form_params.get("action", "")).lower()
-    if action_param == "confirm_trip" or "confirm trip" in q_lower or "confirm and generate" in q_lower:
+    # D. Review Card CTA actions (Confirm Trip or Modify Trip)
+    if form_action == "confirm_trip" or "confirm trip" in q_lower or "confirm and generate" in q_lower:
         dest = form_params.get("destination") or "Jaipur"
         parsed = parse_travel_params(clean_query, form_params)
         return {"workflow_stage": "tourism_planner", "entity_name": str(dest).lower(), "extracted_params": parsed}
 
-    if action_param == "modify_trip" or "modify preferences" in q_lower or "adjust preferences" in q_lower:
+    if form_action == "modify_trip" or "modify preferences" in q_lower or "adjust preferences" in q_lower:
         dest = form_params.get("destination") or "Jaipur"
         return {"workflow_stage": "tourism_briefing", "entity_name": str(dest).lower(), "extracted_params": None}
 
-    # Real-Time Currency Converter check
-    if (
-        action_param == "convert_forex"
-        or ("currency" in selected_domain or "forex" in selected_domain or "5" in selected_domain)
-        or any(kw in q_lower for kw in [
-            "forex", "currency", "exchange rate", "convert usd", "convert eur", "convert gbp", "convert aed",
-            "usd to inr", "eur to inr", "how much is $", "dollar to rupee", "rate of rupee", "convert currency"
-        ])
-    ):
+    # E. Real-Time Currency Converter CTA
+    if form_action == "convert_forex" or form_params.get("source_currency"):
         return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
 
-    # Payment Protocol & VIP Pass check
-    if (
-        action_param == "complete_payment"
-        or ("payment" in selected_domain or "pay" in selected_domain or "6" in selected_domain)
-        or any(kw in q_lower for kw in [
-            "vip pass", "payment", "buy pass", "unlock pass", "unlock dossier", "fet token", "asi token",
-            "pay 1 asi", "pay 1 fet", "travel pass"
-        ])
-        or (q_lower.startswith("pay") and len(q_lower.split()) <= 4)
-    ):
+    # F. Payment Protocol & VIP Pass CTA
+    if form_action == "complete_payment" or form_params.get("service_tier"):
         return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
 
+    # G. Tourism Trip Planner Form Submission CTA
+    if form_action == "plan_trip" or (form_params.get("destination") and form_params.get("days")):
+        dest = form_params.get("destination") or "Jaipur"
+        parsed = parse_travel_params(clean_query, form_params)
+        return {"workflow_stage": "tourism_planner", "entity_name": str(dest).lower(), "extracted_params": parsed}
+
+    # H. Explore City CTA from Carousel or Destination list
+    if form_action == "explore_city" and form_params.get("destination"):
+        dest = str(form_params["destination"]).strip()
+        return {"workflow_stage": "tourism_briefing", "entity_name": dest.lower(), "extracted_params": None}
+
+    # I. Domain Explorer Form Submission (Option 1 - 6 Selection)
+    if form_action == "select_domain" or "domain" in form_params:
+        selected_domain = str(form_params.get("domain", "")).lower()
+        if "economy" in selected_domain or "1" in selected_domain:
+            return {"workflow_stage": "economy_form", "entity_name": None, "extracted_params": None}
+        if "tourism" in selected_domain or "2" in selected_domain:
+            return {"workflow_stage": "tourism_destinations", "entity_name": None, "extracted_params": None}
+        if "culture" in selected_domain or "3" in selected_domain:
+            return {"workflow_stage": "culture_form", "entity_name": None, "extracted_params": None}
+        if "science" in selected_domain or "4" in selected_domain:
+            return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": None}
+        if "currency" in selected_domain or "forex" in selected_domain or "5" in selected_domain:
+            return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
+        if "payment" in selected_domain or "pay" in selected_domain or "6" in selected_domain:
+            return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
+
+    # ----------------------------------------------------
+    # 3. Direct Landing Page Options & Domain Shortcuts (User typing numbers or keywords)
+    # ----------------------------------------------------
+    # Economy shortcut (Option 1)
+    if q_lower in ["1", "option 1", "opt 1", "open economy"] or (
+        q_lower.strip() in ["economy", "indian economy"] and len(q_lower.split()) <= 2
+    ):
+        return {"workflow_stage": "economy_form", "entity_name": None, "extracted_params": None}
+
+    # Tourism shortcut (Option 2)
+    if q_lower in ["2", "option 2", "opt 2", "open tourism"] or (
+        q_lower.strip() in ["tourism", "travel", "tourism in india"] and not any(city in q_lower for city in FLAGSHIP_CITIES)
+    ):
+        return {"workflow_stage": "tourism_destinations", "entity_name": None, "extracted_params": None}
+
+    # Culture shortcut (Option 3)
+    if q_lower in ["3", "option 3", "opt 3", "open culture"] or (
+        q_lower.strip() in ["culture", "indian culture", "social fabric"] and not any(kw in q_lower for kw in ["dance", "music", "festival", "north india", "south india"])
+    ):
+        return {"workflow_stage": "culture_form", "entity_name": None, "extracted_params": None}
+
+    # Science shortcut (Option 4)
+    if q_lower in ["4", "option 4", "opt 4", "open science"] or (
+        q_lower.strip() in ["science", "future tech", "technology", "science & tech"] and not any(kw in q_lower for kw in ["isro", "chip", "semiconductor", "ai", "quantum", "5g"])
+    ):
+        return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": None}
+
+    # Currency shortcut (Option 5)
+    if q_lower in ["5", "option 5", "opt 5", "open currency", "currency", "forex"]:
+        return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
+
+    # Payment shortcut (Option 6)
+    if q_lower in ["6", "option 6", "opt 6", "vip pass", "payment"]:
+        return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
+
+    # ----------------------------------------------------
+    # 4. Interactive Carousel & Transit Specialist Inquiries
+    # ----------------------------------------------------
     # Destinations Carousel check
     if any(kw in q_lower for kw in ["carousel", "top destinations", "browse cities", "explore destinations"]):
         return {"workflow_stage": "destinations_carousel", "entity_name": None, "extracted_params": None}
@@ -3062,7 +3134,23 @@ def supervisor_router(state: AgentState) -> AgentState:
         matched_transit_city = next(city for city in FLAGSHIP_CITIES if city in q_lower)
         return {"workflow_stage": "transit_specialist", "entity_name": matched_transit_city, "extracted_params": None}
 
-    # 3. Check for Tourism Flow (Destinations, Form Submissions, Itineraries)
+    # Real-Time Currency Converter natural language check
+    if any(kw in q_lower for kw in [
+        "forex", "exchange rate", "convert usd", "convert eur", "convert gbp", "convert aed",
+        "usd to inr", "eur to inr", "how much is $", "dollar to rupee", "rate of rupee", "convert currency"
+    ]):
+        return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
+
+    # Payment Protocol natural language check
+    if any(kw in q_lower for kw in [
+        "vip pass", "buy pass", "unlock pass", "unlock dossier", "fet token", "asi token",
+        "pay 1 asi", "pay 1 fet", "travel pass"
+    ]) or (q_lower.startswith("pay") and len(q_lower.split()) <= 4):
+        return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
+
+    # ----------------------------------------------------
+    # 5. Check for Tourism Flow (Destinations, Cities, Form Submissions, Itineraries)
+    # ----------------------------------------------------
     matched_city = None
     dest_param = form_params.get("destination") or form_params.get("dest")
     if dest_param and str(dest_param).lower() not in ("choose...", ""):
@@ -3103,7 +3191,7 @@ def supervisor_router(state: AgentState) -> AgentState:
     has_travel_context = any(kw in q_lower for kw in [
         "tourism", "trip", "travel", "tour", "itinerary", "visit", "destination", "days", "day", "people", 
         "budget", "hotel", "train", "flight", "explore", "plan"
-    ]) or bool(form_params)
+    ])
 
     if matched_city or has_travel_context:
         has_duration = bool(
@@ -3133,30 +3221,40 @@ def supervisor_router(state: AgentState) -> AgentState:
                 return {"workflow_stage": "state_composite", "entity_name": matched_city, "extracted_params": None}
             return {"workflow_stage": "tourism_briefing", "entity_name": matched_city, "extracted_params": None}
 
-    # 4. Check for Economy & Financial Markets Inquiries / Form Submissions
+    # ----------------------------------------------------
+    # 6. Check for Economy & Financial Markets Inquiries / Form Submissions
+    # ----------------------------------------------------
     economy_keywords = [
         "economy", "gdp", "growth", "sector", "sectors", "manufacturing", "services", "industry",
-        "startup", "startups", "unicorn", "make in india", "atmanirbhar", "export", "import", "fdi",
+        "startup", "startups", "unicorn", "unicorns", "make in india", "atmanirbhar", "export", "import", "fdi",
         "employment", "inflation", "fiscal", "monetary", "rbi", "budget", "tax", "gst",
         "company", "companies", "tata", "reliance", "infosys", "tcs", "wipro", "hcl", "adani",
         "l&t", "mahindra", "maruti", "stock", "stocks", "nse", "bse", "nifty", "sensex", "mutual fund",
-        "sebi", "banking", "bank", "upi", "rupay", "fintech", "financial"
+        "sebi", "banking", "bank", "upi", "rupay", "fintech", "financial",
+        "titans", "corporate titans", "pli", "pli scheme", "production-linked incentive"
     ]
-    if form_params.get("topic") or has_keyword(q_lower, economy_keywords):
-        return {"workflow_stage": "economy_briefing", "entity_name": None, "extracted_params": None}
+    if form_params.get("topic") or has_keyword(q_lower, economy_keywords) or any(kw in q_lower for kw in [
+        "upi, rupay & fintech revolution", "startups & tech unicorns", "corporate titans", "manufacturing, pli & atmanirbhar bharat",
+        "stock markets (nse, bse, nifty 50, sensex)", "indian economy & gdp growth", "major sectors (services, mfg, agri)"
+    ]):
+        return {"workflow_stage": "economy_briefing", "entity_name": None, "extracted_params": form_params}
 
-    # 5. Check for Culture & Social Fabric Inquiries / Form Submissions
+    # ----------------------------------------------------
+    # 7. Check for Culture & Social Fabric Inquiries / Form Submissions
+    # ----------------------------------------------------
     culture_keywords = [
-        "culture", "tradition", "festival", "festivals", "diwali", "holi", "eid", "christmas", "navratri",
+        "culture", "tradition", "traditions", "festival", "festivals", "diwali", "holi", "eid", "christmas", "navratri",
         "durga puja", "ganesh", "pongal", "onam", "baisakhi", "bihu", "language", "languages", "religion",
         "philosophy", "vedanta", "clothing", "saree", "cuisine", "food", "music", "dance", "dances",
-        "bharatanatyam", "kathak", "kathakali", "odissi", "sattriya", "cinema", "art", "handicraft",
-        "diversity", "society", "demographic", "social fabric", "marriage"
+        "bharatanatyam", "kathak", "kathakali", "odissi", "sattriya", "kuchipudi", "manipuri", "mohiniyattam",
+        "cinema", "art", "handicraft", "diversity", "society", "demographic", "social fabric", "marriage"
     ]
     if form_params.get("region") or form_params.get("theme") or has_keyword(q_lower, culture_keywords):
-        return {"workflow_stage": "culture_report", "entity_name": None, "extracted_params": None}
+        return {"workflow_stage": "culture_report", "entity_name": None, "extracted_params": form_params}
 
-    # 6. Check for Science, Innovation & Future Tech Inquiries / Form Submissions
+    # ----------------------------------------------------
+    # 8. Check for Science, Innovation & Future Tech Inquiries / Form Submissions
+    # ----------------------------------------------------
     science_keywords = [
         "science", "tech", "technology", "isro", "space", "chandrayaan", "mangalyaan", "gaganyaan",
         "aditya", "rocket", "semiconductor", "semiconductors", "chip", "chips", "fab", "dholera",
@@ -3164,9 +3262,11 @@ def supervisor_router(state: AgentState) -> AgentState:
         "green hydrogen", "quantum", "biotechnology", "drone", "defence", "drdo"
     ]
     if form_params.get("category") or has_keyword(q_lower, science_keywords):
-        return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": None}
+        return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": form_params}
 
-    # 7. Check for State / Regional Profiles
+    # ----------------------------------------------------
+    # 9. Check for State / Regional Profiles
+    # ----------------------------------------------------
     for state_name in INDIAN_STATES:
         if re.search(r'\b' + re.escape(state_name) + r'\b', q_lower):
             return {"workflow_stage": "state_composite", "entity_name": state_name, "extracted_params": None}

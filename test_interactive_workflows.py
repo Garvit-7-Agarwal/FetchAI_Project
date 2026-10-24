@@ -41,6 +41,9 @@ INTERACTIVE_TESTS = [
     ("BONUS 3: Payment Protocol & Signed VIP Pass", "pay 1 ASI for VIP Pass"),
     ("BONUS 4: Interactive Destinations Carousel", "show top destinations carousel"),
     ("BONUS 5: Review Card Confirmation CTA", '{"action": "confirm_trip", "destination": "Jaipur", "days": "3", "travelers": "2", "budget": "Budget"}'),
+    ("Domain Form: Economy FinTech Dossier", '{"topic": "FinTech", "period": "Current", "analysis_type": "Detailed", "action": "economy_dossier", "approved": true}'),
+    ("Domain Form: Culture Heritage Dossier", '{"region": "North India", "theme": "Festivals", "depth": "Detailed", "action": "culture_dossier", "approved": true}'),
+    ("Domain Form: Science ISRO Dossier", '{"category": "Space", "organization": "ISRO", "focus": "Current State", "action": "science_dossier", "approved": true}'),
 ]
 
 async def run_tests():
