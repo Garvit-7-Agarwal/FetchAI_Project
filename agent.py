@@ -1,5 +1,8 @@
 import json
 import os
+import socket
+import sys
+import time
 from typing import Any, List
 from dotenv import load_dotenv
 from uagents_core.contrib.protocols.chat import AgentContent, ChatMessage, MetadataContent, TextContent
@@ -10,6 +13,22 @@ from agentverse_sdk.langgraph import init as agentverse_init
 from graph import india_graph
 
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# 0. Singleton Process Guard: Prevents Multiple agent.py Daemons from Running
+# ---------------------------------------------------------------------------
+_SINGLETON_SOCKET = None
+
+def acquire_singleton_lock(port: int = 49155) -> None:
+    """Ensures only ONE instance of agent.py runs at any time, preventing duplicate mailbox handlers."""
+    global _SINGLETON_SOCKET
+    _SINGLETON_SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        _SINGLETON_SOCKET.bind(("127.0.0.1", port))
+    except OSError:
+        print(f"⚠️ [SINGLETON GUARD] An agent.py daemon is already running on port {port}. Exiting to prevent duplicate responses.")
+        sys.exit(0)
+
 
 # ---------------------------------------------------------------------------
 # 1. Ensure MetadataContent (Interactive Cards for ASI:One) is properly mapped
@@ -39,9 +58,9 @@ def _is_human_message(msg: Any) -> bool:
 
 def clean_single_turn_content(content: List[AgentContent]) -> List[AgentContent]:
     """
-    Ensures at most ONE interactive form card (MetadataContent) is delivered per response.
-    If historical cards from earlier turns leak through thread history, only the active
-    card and its accompanying message from the current turn are preserved.
+    STRICT SINGLE-CARD ENFORCEMENT:
+    Ensures that at most ONE interactive form card (MetadataContent) is present in ANY reply.
+    If multiple cards exist, keeps only the latest one and discards all duplicates.
     """
     if not content:
         return content
@@ -55,33 +74,19 @@ def clean_single_turn_content(content: List[AgentContent]) -> List[AgentContent]
             return True
         return False
 
-    last_card_idx = -1
-    for i, block in enumerate(content):
+    last_card = None
+    non_cards = []
+
+    for block in content:
         if is_card(block):
-            last_card_idx = i
-
-    if last_card_idx < 0:
-        return content
-
-    prev_card_idx = -1
-    for i in range(last_card_idx - 1, -1, -1):
-        if is_card(content[i]):
-            prev_card_idx = i
-            break
-
-    turn_start_idx = prev_card_idx + 1 if prev_card_idx >= 0 else 0
-    turn_content = content[turn_start_idx:]
-
-    result = []
-    card_found = False
-    for block in reversed(turn_content):
-        if is_card(block):
-            if not card_found:
-                result.append(block)
-                card_found = True
+            last_card = block  # Always keep ONLY the latest card
         else:
-            result.append(block)
-    result.reverse()
+            non_cards.append(block)
+
+    result = non_cards
+    if last_card is not None:
+        result.append(last_card)
+
     return result
 
 
@@ -92,11 +97,11 @@ def _robust_turn_messages_since_last_human(messages: list[Any]) -> list[Any]:
         if _is_human_message(msg):
             last_human_idx = i
     if last_human_idx < 0:
-        # Fallback: return only the last message rather than leaking the entire history
         return messages[-1:] if messages else []
     return messages[last_human_idx + 1 :]
 
 av_content._turn_messages_since_last_human = _robust_turn_messages_since_last_human
+
 
 # Patch extract_ai_content in both content module and app module
 _orig_extract_ai_content = av_content.extract_ai_content
@@ -120,15 +125,64 @@ async def _patched_extract_ai_content(data: dict[str, Any], upload=None) -> list
 av_content.extract_ai_content = _patched_extract_ai_content
 lg_app.extract_ai_content = _patched_extract_ai_content
 
-# Patch application _send_reply as the final gateway before envelope dispatch
+
+# ---------------------------------------------------------------------------
+# 3. Message Deduplication Gateways (Envelope & Outgoing Reply Caches)
+# ---------------------------------------------------------------------------
+_SEEN_MSG_IDS = {}
+_RECENT_REPLIES = {}
+
+_orig_process_and_reply = lg_app.AgentverseLangGraphApplication._process_and_reply
+async def _safe_process_and_reply(self, env, msg):
+    msg_id_str = str(msg.msg_id)
+    now = time.time()
+
+    # Prune old IDs older than 120 seconds
+    expired = [k for k, t in _SEEN_MSG_IDS.items() if now - t > 120]
+    for k in expired:
+        _SEEN_MSG_IDS.pop(k, None)
+
+    if msg_id_str in _SEEN_MSG_IDS:
+        lg_app.logger.warning(f"Duplicate incoming message {msg_id_str} ignored to prevent duplicate card responses.")
+        return
+
+    _SEEN_MSG_IDS[msg_id_str] = now
+    return await _orig_process_and_reply(self, env, msg)
+
+lg_app.AgentverseLangGraphApplication._process_and_reply = _safe_process_and_reply
+
+
 _orig_send_reply = lg_app.AgentverseLangGraphApplication._send_reply
 async def _safe_send_reply(self, env, content, sender_identity):
     clean_content = clean_single_turn_content(content)
+    session_key = str(env.session or env.sender)
+    now = time.time()
+
+    # Suppress duplicate identical card within a 2.0-second window
+    card_meta = None
+    for b in clean_content:
+        if isinstance(b, MetadataContent):
+            card_meta = str(getattr(b, "metadata", ""))
+            break
+
+    if card_meta:
+        last_meta, last_time = _RECENT_REPLIES.get(session_key, (None, 0))
+        if last_meta == card_meta and (now - last_time < 2.0):
+            lg_app.logger.warning("Duplicate card reply suppressed within 2.0s window.")
+            clean_content = [b for b in clean_content if not isinstance(b, MetadataContent)]
+            if not clean_content:
+                return
+
+        _RECENT_REPLIES[session_key] = (card_meta, now)
+
     return await _orig_send_reply(self, env, clean_content, sender_identity)
+
 lg_app.AgentverseLangGraphApplication._send_reply = _safe_send_reply
 
 
-# 2. Ensure inbound form submissions from ASI:One interactive cards are forwarded to LangGraph
+# ---------------------------------------------------------------------------
+# 4. Form Submission Forwarding
+# ---------------------------------------------------------------------------
 _orig_chat_message_text = ChatMessage.text
 def _safe_chat_message_text(self) -> str:
     # 1. Check for interactive card submission in MetadataContent FIRST!
@@ -168,7 +222,7 @@ agentverse_init(AGENT_URI, mailbox=True)
 graph = india_graph
 
 if __name__ == "__main__":
-    import sys
+    acquire_singleton_lock()
     from agentverse_sdk.langgraph import run as agentverse_run
 
     # Default to 'dev' command if no args passed

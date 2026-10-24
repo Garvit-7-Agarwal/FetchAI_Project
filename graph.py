@@ -36,9 +36,6 @@ from uagents_core.contrib.protocols.chat.cards import (
     ReviewSummaryRow,
     create_card_content,
 )
-import payment
-import services
-import transit_agent
 
 load_dotenv()
 
@@ -86,9 +83,6 @@ class AgentState(TypedDict):
         "state_composite",
         "out_of_scope",
         "general_overview",
-        "currency_converter",
-        "payment_checkout",
-        "transit_specialist",
         "destinations_carousel",
         "review_confirm",
     ] | None
@@ -200,8 +194,6 @@ def get_landing_card_payload() -> MetadataContent:
                     FormFieldOption(label="✈️ Option 2: Tourism & UNESCO Heritage", value="Tourism"),
                     FormFieldOption(label="🎨 Option 3: Culture & Social Fabric", value="Culture"),
                     FormFieldOption(label="🚀 Option 4: Science & Future Tech", value="Science"),
-                    FormFieldOption(label="💱 Option 5: Live Forex & Currency Converter", value="Currency"),
-                    FormFieldOption(label="👑 Option 6: VIP Pass & Payment Protocol", value="Payment"),
                 ]
             )
         ],
@@ -241,44 +233,6 @@ def get_review_card_payload(params: Dict[str, Any]) -> MetadataContent:
         reject_cta=CtaAction(
             label="🎛️ Adjust Travel Preferences",
             selection={"action": "modify_trip", "destination": city},
-        ),
-    )
-    return create_card_content(payload)
-
-
-def get_currency_card_payload() -> MetadataContent:
-    """Renders an interactive Foreign Exchange conversion card."""
-    payload = FormCardPayload(
-        title="💱 Real-Time Foreign Exchange (Forex) Converter",
-        fields=[
-            FormField(
-                name="amount",
-                kind="number",
-                label="Amount to Convert",
-                required=True,
-                placeholder="100",
-            ),
-            FormField(
-                name="currency",
-                kind="select",
-                label="Base Currency",
-                required=True,
-                options=[
-                    FormFieldOption(label="🇺🇸 US Dollar (USD)", value="USD"),
-                    FormFieldOption(label="🇪🇺 Euro (EUR)", value="EUR"),
-                    FormFieldOption(label="🇬🇧 British Pound (GBP)", value="GBP"),
-                    FormFieldOption(label="🇦🇪 UAE Dirham (AED)", value="AED"),
-                    FormFieldOption(label="🇨🇦 Canadian Dollar (CAD)", value="CAD"),
-                    FormFieldOption(label="🇦🇺 Australian Dollar (AUD)", value="AUD"),
-                    FormFieldOption(label="🇯🇵 Japanese Yen (JPY)", value="JPY"),
-                    FormFieldOption(label="🇸🇬 Singapore Dollar (SGD)", value="SGD"),
-                ],
-            ),
-        ],
-        submit_cta=CtaAction(
-            label="💱 Calculate Live INR Budget",
-            selection={"action": "convert_forex"},
-            primary=True,
         ),
     )
     return create_card_content(payload)
@@ -2173,39 +2127,6 @@ Generate an executable, highly engaging day-by-day travel dashboard:
 * **09:00 AM – 01:00 PM:** Exploration of ancient temples, historic forts, or natural sanctuaries.
 * **02:00 PM – 05:00 PM:** Local craft demonstration and traditional shopping districts.
 * **07:00 PM:** Authentic cultural dining experience."""
-        itinerary_md = safe_llm_invoke([HumanMessage(content=prompt)], dynamic_fallback)
-
-    # Real-Time Weather Integration
-    live_weather = services.fetch_live_weather(city_name)
-    weather_section = f"""### 🌤️ Real-Time Weather & Live Environmental Advisory ({city_name})
-* **Current Weather:** {live_weather['icon']} **{live_weather['temperature_c']}°C**, {live_weather['condition']}
-* **Atmospheric Conditions:** 💧 **{live_weather['humidity_pct']}%** Humidity | 💨 **{live_weather['wind_kmh']} km/h** Wind
-* **Seasonal Advisory:** {live_weather['advisory']}"""
-
-    # Real-Time Foreign Currency Conversions
-    fx_rates = services.fetch_live_forex_rates()
-    inr_usd = fx_rates.get("INR", 86.85)
-    usd_val = round(total_est / inr_usd, 2)
-    eur_val = round((total_est / inr_usd) * fx_rates.get("EUR", 0.92), 2)
-    gbp_val = round((total_est / inr_usd) * fx_rates.get("GBP", 0.77), 2)
-    aed_val = round((total_est / inr_usd) * fx_rates.get("AED", 3.67), 2)
-
-    forex_section = f"""### 💱 Real-Time Foreign Currency Budget Estimates
-* 🇺🇸 **US Dollar (USD):** ~**${usd_val:,.2f} USD** *(Live Rate: 1 USD = ₹{inr_usd:.2f} INR)*
-* 🇪🇺 **Euro (EUR):** ~**€{eur_val:,.2f} EUR**
-* 🇬🇧 **British Pound (GBP):** ~**£{gbp_val:,.2f} GBP**
-* 🇦🇪 **UAE Dirham (AED):** ~**{aed_val:,.2f} AED**"""
-
-    # Multi-Agent Transit Specialist Handoff
-    transit_info = transit_agent.resolve_transit_itinerary("Delhi", city_name, transport)
-    top_transit = transit_info.options[0] if transit_info.options else None
-    transit_extra = ""
-    if top_transit:
-        transit_extra = f"""* 🚆 **Transit Specialist Recommendation:** **{top_transit.service_name}** (#{top_transit.service_number})  
-  🕒 **Schedule:** {top_transit.departure_time} ➔ {top_transit.arrival_time} ({top_transit.duration})  
-  📏 **Rail Distance:** {top_transit.distance_km} km | 💰 **Fare:** {top_transit.fare_estimate}  
-  👉 **[ 🔗 Direct Train Search on IRCTC Portal ]({top_transit.booking_url})**\n"""
-
     output = f"""# 🇮🇳 {city_name} Trip Plan — Intelligence Dashboard
 
 ### 📋 Trip Summary Card
@@ -2217,17 +2138,13 @@ Generate an executable, highly engaging day-by-day travel dashboard:
 
 ---
 
-{weather_section}
-
----
-
 {itinerary_md}
 
 ---
 
 ## 🚆 Transportation Intelligence & Direct Booking Links
 
-{transit_extra}* 🚆 **High-Speed Rail:** {city_data.get('train_route', f'Regular Superfast Express trains connect to {city_name} Junction.') if city_data else f'Regular Superfast Express trains connect to {city_name} Junction.'}  
+* 🚆 **High-Speed Rail:** {city_data.get('train_route', f'Regular Superfast Express trains connect to {city_name} Junction.') if city_data else f'Regular Superfast Express trains connect to {city_name} Junction.'}  
   👉 **[ 🔗 Search / Book Trains on Official IRCTC Portal ]({irctc_link})**
 
 * ✈️ **Flight Routes:** {city_data.get('flight_route', f'Nearest commercial airport connects {city_name} with major metros.') if city_data else f'Nearest commercial airport connects {city_name} with major metros.'}  
@@ -2262,21 +2179,11 @@ Generate an executable, highly engaging day-by-day travel dashboard:
 
 ---
 
-{forex_section}
-
----
-
 ## 🔎 Sources & Authoritative References
 * 🏛️ **Monument Authority:** [{ticket_portal_name}]({ticket_link})
 * 🚆 **Indian Railway Catering and Tourism Corporation:** [irctc.co.in]({irctc_link})
 * 🗺️ **Official State Tourism Portal:** Incredible India ([incredibleindia.gov.in](https://www.incredibleindia.gov.in/))
 * 📜 **UNESCO World Heritage Centre:** [whc.unesco.org](https://whc.unesco.org/en/statesparties/in)
-
----
-
-### 👑 Verified VIP All-India Expedited Travel Pass
-Unlock priority 24/7 IRCTC Tatkal assistance, DigiYatra fast-track guidelines, Tourist Police 1363 hotline, and an official cryptographically signed pass on Fetch.ai ledger for **1.0 ASI / FET**.  
-👉 **[ 💳 Unlock VIP Pass (1.0 ASI) ]** *(Reply `VIP Pass` or `Pay`)*
 
 ---
 
@@ -2608,73 +2515,345 @@ Please select the technology frontiers and research parameters using the interac
     }
 
 
-def science_dashboard_node(state: AgentState) -> AgentState:
-    """Step 2 of Science: Generates Structured Technology Intelligence Dossier Dashboard."""
-    user_query = get_message_content(state["messages"][-1])
+def search_science_topic_online(query: str) -> Dict[str, Any]:
+    """Real-time online search via Wikipedia REST / Search API for tech topics outside core dropdown options."""
+    clean_q = query.strip()
+    search_term = clean_q if "india" in clean_q.lower() else f"{clean_q} in India"
+    result = {
+        "query": clean_q,
+        "search_term": search_term,
+        "title": clean_q.title(),
+        "extract": "",
+        "url": f"https://en.wikipedia.org/wiki/{urllib.parse.quote(clean_q.replace(' ', '_'))}",
+        "success": False
+    }
     
-    prompt = f"""
-You are the Science, Innovation & Future Tech Specialist of 🇮🇳 India Educational AI Intelligence Agent (@india-intel-agent).
-User Query / Form Submission: "{user_query}"
+    try:
+        search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(search_term)}&format=json&utf8=1&srlimit=2"
+        req = urllib.request.Request(search_url, headers={"User-Agent": "IndiaIntelAgent/1.0 (https://asi1.ai)"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            search_items = data.get("query", {}).get("search", [])
+            if search_items:
+                best_title = search_items[0].get("title", clean_q)
+                result["title"] = best_title
+                sum_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(best_title)}"
+                sum_req = urllib.request.Request(sum_url, headers={"User-Agent": "IndiaIntelAgent/1.0 (https://asi1.ai)"})
+                with urllib.request.urlopen(sum_req, timeout=5) as s_resp:
+                    s_data = json.loads(s_resp.read().decode())
+                    result["extract"] = s_data.get("extract", "")
+                    if "content_urls" in s_data and "desktop" in s_data["content_urls"]:
+                        result["url"] = s_data["content_urls"]["desktop"].get("page", result["url"])
+                    result["success"] = True
+    except Exception as e:
+        logger.warning(f"Online search error for '{query}': {e}")
+        
+    return result
 
-Reference Grounding Base:
-{DOMAIN_CONTEXTS['science_tech']}
 
-Generate an inspiring, rigorous, and structured technology dossier:
-1. 🚀 **Executive Technology Dashboard & Strategic Importance**.
-2. 🔬 **Core Ecosystem & Landmark Missions**:
-   * ISRO Space Exploration (Chandrayaan-3 south pole landing, Gaganyaan, Aditya-L1).
-   * India Semiconductor Mission ($10B incentive, Tata-PSMC commercial fab at Dholera, Micron OSAT in Sanand).
-   * IndiaAI Mission (₹10,300+ Cr outlay, 10,000+ GPU sovereign compute, Project Bhashini).
-   * Telecommunications (Fastest 5G rollout, Bharat 6G Vision).
-   * Clean Energy (National Green Hydrogen Mission 5 MMT by 2030, 500 GW target).
-3. 🏢 **Key Institutions & DeepTech Startups** (ISRO, IN-SPACe, Skyroot, Agnikul, Tata Electronics, Micron, IITs, DRDO).
-4. 🌐 **Global Comparative Benchmark** (>20% of world's chip design engineers in India).
-5. ⚠️ **Critical Challenges & Future Roadmap (2030–2047)**.
-6. 🔎 **Authoritative Sources & Citations** (ISRO isro.gov.in, MeitY meity.gov.in, ISM, Department of Science & Technology).
-"""
-    fallback = """# 🚀 Science, Innovation & Future Technology: Intelligence Dossier
+SCIENCE_TOPIC_DOSSIERS = {
+    "Quantum": """# ⚛️ Quantum Computing & Cryptography: Intelligence Dossier
+**National Quantum Mission (NQM) • India DeepTech Frontiers**
 
-### 🛰️ 1. Space Exploration: ISRO & The Private Space Ecosystem
-* **Chandrayaan-3 Landmark (Aug 23, 2023):** India became the **1st nation to land near the lunar South Pole** (Shiv Shakti Point) and 4th country to achieve a soft lunar landing. August 23 is officially designated **National Space Day**.
-* **Gaganyaan Program:** Indigenous human spaceflight mission aiming to send Indian astronauts (Vyomnauts) to a 400 km low Earth orbit and return safely to Indian waters.
-* **Solar Physics (Aditya-L1):** Positioned in a halo orbit at the Sun-Earth Lagrangian Point L1 (~1.5 million km from Earth) for uninterrupted solar corona observation.
-* **NewSpace Startups (IN-SPACe):**
-  * **Skyroot Aerospace:** Launched India's first private rocket (*Vikram-S*).
-  * **Agnikul Cosmos:** Pioneered the world's first single-piece 3D-printed semi-cryogenic rocket engine (*Agnibaan SOrTeD*).
-  * **Pixxel:** Building the world's highest-resolution hyperspectral satellite constellation.
-
----
-
-### 🔬 2. India Semiconductor Mission (ISM)
-* **$10 Billion Capital Outlay:** Comprehensive incentive program subsidizing up to 50% of project costs for commercial silicon fabs, packaging, and design.
-* **Flagship Projects Under Construction:**
-  * **Tata Electronics & PSMC (Taiwan):** India's first commercial semiconductor fab in **Dholera, Gujarat** (₹91,000 Crore investment, 28nm/55nm technology).
-  * **Micron Technology:** OSAT assembly and test facility in **Sanand, Gujarat** ($2.75 Billion total capital investment).
-  * **CG Power & Renesas:** Advanced semiconductor packaging plant in Sanand.
-* **Global Design Strength:** Over **20% of the world's semiconductor design and verification talent** is based in India (Bengaluru, Hyderabad, Noida).
+### 🔬 1. National Quantum Mission (NQM) Overview
+* **₹6,003.65 Crore National Outlay:** Approved by the Union Cabinet to seed, nurture, and scale scientific and industrial R&D in Quantum Technology (QT) over 2023–2031.
+* **Top 6 Elite League:** India is among the world's top 6 leading nations (US, China, France, Austria, Finland, India) with a dedicated, fully funded national quantum mission.
+* **Mission Goal:** Develop intermediate-scale quantum computers with **50 to 1,000 physical qubits** within 8 years using superconducting and photonic qubit platforms.
 
 ---
 
-### 🤖 3. IndiaAI Mission & Sovereign Compute
-* **₹10,300+ Crore National Mission:** Establishing a public-private compute infrastructure of **10,000+ high-end GPUs** accessible to startups and academic researchers.
-* **Project Bhashini:** National AI translation engine breaking linguistic barriers across India's 22 scheduled languages through voice and text.
+### 🌐 2. Four Thematic Hubs (T-Hubs)
+1. **Quantum Computing:** Physical qubit synthesis, quantum algorithms, fault-tolerant error correction architectures, and quantum simulations.
+2. **Quantum Communication:** Satellite-based secure quantum communications between ground stations over 2,000 km, and inter-city Quantum Key Distribution (QKD) over 2,000 km optical fiber networks.
+3. **Quantum Sensing & Metrology:** High-sensitivity atomic clocks, quantum gravimeters, and quantum magnetometers for navigation, defence, and mineral exploration.
+4. **Quantum Materials & Devices:** Fabrication of superconducting quantum materials, topological insulators, and novel 2D quantum wells.
 
 ---
 
-### ⚡ 4. Clean Energy, 5G/6G & Quantum Frontiers
-* **Fastest Global 5G Rollout:** Over 400,000 5G base stations deployed across 98%+ districts; Bharat 6G Vision launched.
-* **National Green Hydrogen Mission:** Target of 5 Million Metric Tonnes (MMT) annual production by 2030.
-* **National Quantum Mission (NQM):** ₹6,000 Crore outlay targeting quantum communications, sensing, and quantum computers.
+### 🏢 3. Key Research Institutions & Pioneer Labs
+* **Raman Research Institute (RRI, Bengaluru):** Leading Quantum Information and Computing (QuIC) lab; demonstrated quantum entanglement and QKD over free space.
+* **Tata Institute of Fundamental Research (TIFR, Mumbai):** Fabricating India's first superconducting 7-qubit quantum processor.
+* **Indian Institute of Science (IISc, Bengaluru):** Centre for Quantum Technologies researching quantum photonic chips and solid-state spin qubits.
+* **IIT Madras & IIT Delhi:** Pioneering secure QKD fiber links over 100+ km in partnership with DRDO.
+* **C-DOT (Centre for Development of Telematics):** Deploying commercial quantum-secured telecom encryption boxes.
+
+---
+
+### 🚀 4. Private DeepTech Startups & Industry
+* **QNu Labs (Bengaluru):** Commercial cybersecurity leader providing quantum-safe cryptographic solutions (*Tropos*, *Armos*) and QKD hardware deployed by the Indian Army and enterprise banks.
+* **BosonQ Psi:** Developing enterprise quantum simulation software (*BQPhy*) for aerospace, defense, and automotive multiphysics modeling.
+* **QuLabs & QuantAI:** Quantum machine learning algorithms and post-quantum cryptography (PQC) transition frameworks.
 
 ---
 
 ### 🔎 5. Authoritative Sources & Citations
-* 🛰️ **Indian Space Research Organisation (ISRO):** [isro.gov.in](https://www.isro.gov.in/)
-* 🔬 **India Semiconductor Mission (MeitY):** [ism.gov.in](https://www.ism.gov.in/)
-* 🤖 **IndiaAI National Portal:** [indiaai.gov.in](https://indiaai.gov.in/)
-* 🏛️ **Department of Science & Technology (DST):** [dst.gov.in](https://dst.gov.in/)"""
+* ⚛️ **National Quantum Mission Portal (DST):** [dst.gov.in/national-quantum-mission-nqm](https://dst.gov.in/national-quantum-mission-nqm)
+* 🏛️ **Department of Science & Technology (DST):** [dst.gov.in](https://dst.gov.in/)
+* 🔬 **Centre for Development of Telematics (C-DOT):** [cdot.in](https://www.cdot.in/)
+* 🛡️ **Defence Research and Development Organisation (DRDO):** [drdo.gov.in](https://www.drdo.gov.in/)""",
 
-    output = safe_llm_invoke([HumanMessage(content=prompt)], fallback)
+    "Semiconductors": """# 🔬 Semiconductors & Chip Fabs: Intelligence Dossier
+**India Semiconductor Mission (ISM) • Silicon Sovereignty & Advanced Packaging**
+
+### 🏭 1. India Semiconductor Mission (ISM) Overview
+* **$10 Billion (₹76,000 Crore) Incentive Package:** Comprehensive fiscal scheme subsidizing **up to 50% of capital expenditure (Capex)** for commercial semiconductor silicon fabs, display fabs, compound semiconductors, and advanced packaging (ATMP/OSAT).
+* **Strategic Objective:** Reduce import dependency, protect critical national electronics supply chains, and position India as a premier global semiconductor powerhouse.
+
+---
+
+### 🏗️ 2. Landmark Fabs & Facilities Under Construction
+1. **Tata Electronics & PSMC (Taiwan) — Dholera Commercial Fab:**
+   * **Location:** Dholera Special Investment Region (SIR), Gujarat.
+   * **Investment:** **₹91,000 Crore (~$11 Billion)**.
+   * **Capacity:** 50,000 wafer starts per month (28nm, 55nm, and 90nm nodes) powering automotive, computing, communications, and power electronics.
+2. **Micron Technology — Sanand OSAT Assembly & Test Facility:**
+   * **Location:** Sanand, Gujarat.
+   * **Investment:** **$2.75 Billion** combined public-private outlay.
+   * **Focus:** Advanced packaging for DRAM, NAND, and enterprise SSD memory modules.
+3. **CG Power, Renesas (Japan) & Stars Microelectronics:**
+   * **Location:** Sanand, Gujarat.
+   * **Investment:** ₹7,600 Crore ATMP facility focusing on specialized automotive and IoT chips.
+4. **Tata Semiconductor Assembly and Test (TSAT) — Jagiroad, Assam:**
+   * **Location:** Morigaon, Assam.
+   * **Investment:** ₹27,000 Crore advanced packaging unit creating 27,000+ high-tech jobs.
+
+---
+
+### 🌐 3. Global Chip Design Dominance
+* **>20% Global Design Talent:** Over **125,000 top VLSI, logic verification, and chip design engineers** work in India (Bengaluru, Hyderabad, Noida, Pune).
+* **Global R&D Centers:** NVIDIA, Intel, AMD, Qualcomm, Broadcom, Texas Instruments, and ARM design their flagship microarchitectures in Indian development centers.
+* **Design-Linked Incentive (DLI) Scheme:** Government funding up to 50% design expenses for Indian fabless chip startups (Mindgrove Technologies, InCore Semiconductors, Saankhya Labs).
+
+---
+
+### 🔎 4. Authoritative Sources & Citations
+* 🔬 **India Semiconductor Mission (MeitY):** [ism.gov.in](https://www.ism.gov.in/)
+* 🏛️ **Ministry of Electronics and Information Technology:** [meity.gov.in](https://www.meity.gov.in/)
+* 💼 **India Brand Equity Foundation — Semiconductor Sector:** [ibef.org](https://www.ibef.org/)""",
+
+    "AI": """# 🤖 Artificial Intelligence & IndiaAI Mission: Intelligence Dossier
+**₹10,372 Crore Sovereign Compute • Project Bhashini & Inclusive AI**
+
+### 🧠 1. IndiaAI Mission: Strategic Pillars
+* **₹10,372 Crore Union Cabinet Outlay:** Establishing sovereign AI capacity, democratizing computational power, and accelerating indigenous foundational AI models.
+* **10,000+ High-End GPU Sovereign Compute:** Public-private partnership deploying scalable compute clusters accessible to Indian startups, researchers, and academia at highly subsidized rates.
+* **IndiaAI Datasets Platform:** Centralized national repository of non-personal, anonymized open datasets across healthcare, agriculture, climate, and governance.
+
+---
+
+### 🗣️ 2. Project Bhashini (National Language Translation Mission)
+* **Breaking Linguistic Barriers:** Voice-first multimodal AI ecosystem spanning all **22 scheduled Indian languages**.
+* **Voice-First AI Citizen Services:** Enables citizens to speak in their mother tongue to interact with government welfare portals, banking systems, and educational tools.
+* **Crowdsourced Bhasha Daan:** Tens of thousands of citizens contributing dialect voices and localized sentence pairs for open-source AI training.
+
+---
+
+### 🚀 3. DeepTech Generative AI Ecosystem
+* **Sarvam AI:** Sovereign foundational models tailored to Indian languages, enterprise context, and voice agents.
+* **Krutrim:** Sovereign AI stack with multilingual LLM and silicon design initiatives.
+* **BharatGPT & CoRover:** Multimodal conversational AI serving public utilities, railways, and telecom.
+* **Stanford AI Index Benchmark:** India ranks **#1 globally in relative AI skill penetration** and AI talent concentration.
+
+---
+
+### 🔎 4. Authoritative Sources & Citations
+* 🤖 **IndiaAI Official Mission Portal:** [indiaai.gov.in](https://indiaai.gov.in/)
+* 🌐 **Project Bhashini Portal:** [bhashini.gov.in](https://bhashini.gov.in/)
+* 🏛️ **Ministry of Electronics and Information Technology (MeitY):** [meity.gov.in](https://www.meity.gov.in/)""",
+
+    "Space": """# 🛰️ Space Exploration & ISRO Ecosystem: Intelligence Dossier
+**Lunar South Pole Landing • Human Spaceflight & Commercial NewSpace**
+
+### 🌕 1. Landmark Missions & Planetary Exploration
+* **Chandrayaan-3 Historic Landing (Aug 23, 2023):** India made history as the **first nation to land near the lunar South Pole** (Shiv Shakti Point) and 4th country to achieve a soft lunar landing. August 23 is officially celebrated nationwide as **National Space Day**.
+* **Aditya-L1 Solar Observatory:** Placed in a halo orbit around the Sun-Earth Lagrangian Point L1 (~1.5 million km from Earth) for continuous observation of solar flares and coronal mass ejections.
+* **Gaganyaan Human Spaceflight Program:** Indigenous mission to send 3 Indian astronauts (Vyomnauts) to 400 km Low Earth Orbit aboard the human-rated LVM3 launch vehicle and return safely to Indian coastal waters.
+* **Bharatiya Antariksh Station (BAS):** Planned sovereign space station with the first module launching by 2028 and fully operational by 2035, followed by a crewed lunar landing by 2047.
+
+---
+
+### 🚀 2. IN-SPACe & Commercial NewSpace Revolution
+* **IN-SPACe (Indian National Space Promotion and Authorization Centre):** Single-window autonomous regulator fostering private rocket launches and satellite manufacturing.
+* **Skyroot Aerospace:** Launched India's first privately developed rocket (*Vikram-S*).
+* **Agnikul Cosmos:** Built and launched the world's first single-piece 3D-printed semi-cryogenic rocket engine (*Agnibaan SOrTeD*) from India's first private launchpad at Sriharikota.
+* **Pixxel:** Building the world's highest-resolution commercial hyperspectral satellite constellation for global agriculture and climate monitoring.
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 🛰️ **Indian Space Research Organisation (ISRO):** [isro.gov.in](https://www.isro.gov.in/)
+* 🚀 **IN-SPACe Single-Window Portal:** [inspace.gov.in](https://www.inspace.gov.in/)
+* 💼 **NewSpace India Limited (NSIL):** [nsilindia.co.in](https://www.nsilindia.co.in/)""",
+
+    "Clean Energy": """# ⚡ Clean Energy, Solar & Green Hydrogen: Intelligence Dossier
+**500 GW Non-Fossil Roadmap • PM Surya Ghar & National Green Hydrogen Mission**
+
+### ☀️ 1. Renewable Energy Milestones & Capacity
+* **4th Largest Renewable Energy Producer Globally:** India has surpassed **200+ GW installed non-fossil capacity**, targeting **500 GW by 2030** and Net-Zero carbon emissions by 2070.
+* **World's Mega Solar Parks:**
+  * **Bhadla Solar Park (Rajasthan):** World's largest operational solar plant (~2,245 MW).
+  * **Pavagada Solar Park (Karnataka):** Over 2,050 MW installed capacity across arid scrubland.
+* **PM-Surya Ghar Muft Bijli Yojana:** ₹75,000 Crore national mission subsidizing rooftop solar systems for 10 million households across India.
+
+---
+
+### 💧 2. National Green Hydrogen Mission
+* **₹19,744 Crore Capital Outlay:** Aiming to make India a global hub for production, usage, and export of Green Hydrogen and its derivatives.
+* **2030 Key Targets:**
+  * Annual Green Hydrogen production of **5 Million Metric Tonnes (MMT)**.
+  * Adding **125 GW renewable capacity** dedicated solely to green hydrogen generation.
+  * Reduction of over **₹1 Lakh Crore in fossil fuel imports** and 50 MMT carbon emissions per year.
+* **Strategic Interventions for Green Hydrogen Transition (SIGHT):** Financial incentives for domestic electrolyser manufacturing and green hydrogen production.
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* ⚡ **Ministry of New and Renewable Energy (MNRE):** [mnre.gov.in](https://www.mnre.gov.in/)
+* 💧 **National Green Hydrogen Mission Portal:** [mnre.gov.in/green-hydrogen](https://mnre.gov.in/green-hydrogen)
+* ☀️ **Solar Energy Corporation of India (SECI):** [seci.co.in](https://www.seci.co.in/)""",
+
+    "Telecom": """# 📶 Telecommunications & 6G Frontiers: Intelligence Dossier
+**Fastest Global 5G Rollout • Bharat 6G Vision & Indigenous Telecom Stack**
+
+### 📱 1. Record-Breaking 5G Nationwide Deployment
+* **World's Fastest 5G Rollout:** Over **450,000 5G base stations** deployed across 98%+ of India's districts within 18 months, covering 100+ million subscribers.
+* **Lowest Data Tariffs Globally:** India offers among the lowest mobile data costs globally (~$0.15 per GB), driving explosive digital adoption.
+* **BharatNet Optical Fiber Project:** Connecting over 250,000 Gram Panchayats with high-speed rural broadband.
+
+---
+
+### 📡 2. Indigenous 4G/5G Telecom Stack & Bharat 6G
+* **C-DOT & TCS Indigenous Telecom Stack:** 100% indigenous 4G/5G core, radio access network (RAN), and transmission software successfully deployed commercially on BSNL networks.
+* **Bharat 6G Vision Document:** Launched by the Prime Minister; Bharat 6G Alliance brings together academia, industry, and operators working on terahertz communications, AI-native air interfaces, and intelligent reflecting surfaces.
+* **Telecom PLI Scheme:** Over ₹12,000 Crore investment attracted, turning India into a net exporter of telecom gear and smart devices (Foxconn, Pegatron, Dixon, Tejas Networks).
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 📶 **Department of Telecommunications (DoT):** [dot.gov.in](https://dot.gov.in/)
+* 🌐 **Bharat 6G Vision (DoT):** [dot.gov.in/bharat-6g-vision](https://dot.gov.in/bharat-6g-vision)
+* 🔬 **Centre for Development of Telematics (C-DOT):** [cdot.in](https://www.cdot.in/)""",
+}
+
+
+def science_dashboard_node(state: AgentState) -> AgentState:
+    """Step 2 of Science: Generates Topic-Specific Technology Intelligence Dossier or Live Online Search."""
+    user_query = get_message_content(state["messages"][-1])
+    clean_query, form_params = parse_incoming_input(user_query)
+    q_lower = clean_query.lower()
+    
+    # Check if category is specified in form or state
+    category_param = form_params.get("category") or (state.get("extracted_params") or {}).get("category")
+    selected_topic = None
+    
+    if category_param:
+        cat_str = str(category_param).strip().lower()
+        for k in SCIENCE_TOPIC_DOSSIERS.keys():
+            if k.lower() in cat_str or cat_str in k.lower():
+                selected_topic = k
+                break
+    
+    # If not found via form param, check user query text
+    if not selected_topic:
+        if any(w in q_lower for w in ["quantum", "nqm", "qubit", "qkd", "cryptography"]):
+            selected_topic = "Quantum"
+        elif any(w in q_lower for w in ["semiconductor", "chip", "fab", "dholera", "micron", "sanand", "ism"]):
+            selected_topic = "Semiconductors"
+        elif any(w in q_lower for w in ["ai", "artificial intelligence", "indiaai", "bhashini", "gpu", "compute", "llm"]):
+            selected_topic = "AI"
+        elif any(w in q_lower for w in ["space", "isro", "chandrayaan", "gaganyaan", "aditya", "skyroot", "agnikul", "in-space", "pixxel", "satellite", "rocket"]):
+            selected_topic = "Space"
+        elif any(w in q_lower for w in ["clean energy", "green hydrogen", "solar", "renewable", "solar park", "pm surya"]):
+            selected_topic = "Clean Energy"
+        elif any(w in q_lower for w in ["telecom", "5g", "6g", "telecommunications", "broadband", "bharatnet"]):
+            selected_topic = "Telecom"
+
+    # Case 1: Topic is one of the 6 core dropdown categories
+    if selected_topic and selected_topic in SCIENCE_TOPIC_DOSSIERS:
+        fallback = SCIENCE_TOPIC_DOSSIERS[selected_topic]
+        prompt = f"""
+You are the Science, Innovation & Future Tech Specialist of 🇮🇳 India Educational AI Intelligence Agent (@india-intel-agent).
+Target Topic: {selected_topic}
+User Query: "{user_query}"
+
+Provide a dedicated, high-impact intelligence dossier specifically focused on {selected_topic} in India.
+Include:
+1. Executive Strategic Significance & National Mission Outlays.
+2. Flagship Programs, Facilities Under Construction & Core Milestones.
+3. Pioneer Research Labs & DeepTech Startup Ecosystem.
+4. Global Benchmarks & Comparative Strengths.
+5. Authoritative Official Portals & Citations.
+"""
+        output = safe_llm_invoke([HumanMessage(content=prompt)], fallback)
+        resp = make_ai_response(output, None)
+        return {
+            "workflow_stage": "science_dossier",
+            "final_output": resp["final_output"],
+            "messages": resp["messages"],
+        }
+
+    # Case 2: Topic is NOT in the 6 dropdown options -> Perform real-time online search!
+    search_query = clean_query
+    for prefix in ["tell me about", "what is", "explain", "information on", "info on", "research", "search"]:
+        if search_query.lower().startswith(prefix):
+            search_query = search_query[len(prefix):].strip()
+            
+    online_res = search_science_topic_online(search_query)
+    topic_title = online_res.get("title", search_query.title())
+    extract = online_res.get("extract", "")
+    page_url = online_res.get("url", "https://en.wikipedia.org/")
+
+    if extract:
+        search_fallback = f"""# 🌐 Real-Time Web Intelligence: {topic_title}
+**Live Online Search Verified • Science, Innovation & Future Tech Ecosystem**
+
+### 🔬 1. Executive Summary & Core Intelligence
+{extract}
+
+---
+
+### 🇮🇳 2. Strategic Context & India's National Initiatives
+* **Technological Imperative:** Emerging frontier in India's technology ecosystem, driven by public R&D institutions (CSIR, DST, IITs), deeptech startups, and national mission frameworks.
+* **National Policy & Funding:** Supported by the **Department of Science & Technology (DST)** and the **Anusandhan National Research Foundation (ANRF)** with ₹50,000 Crore research outlay.
+* **Industry & Startup Acceleration:** Rapidly expanding ecosystem of specialized private enterprises and university incubators across Bengaluru, Hyderabad, Chennai, and NCR.
+
+---
+
+### 🔎 3. Verified Online Citations & Primary Sources
+* 🌐 **Verified Article:** [{topic_title}]({page_url})
+* 🏛️ **Department of Science & Technology (DST):** [dst.gov.in](https://dst.gov.in/)
+* 🔬 **Council of Scientific & Industrial Research (CSIR):** [csir.res.in](https://www.csir.res.in/)
+* 🇮🇳 **National Portal of India:** [india.gov.in](https://www.india.gov.in/)"""
+    else:
+        search_fallback = f"""# 🌐 Real-Time Web Intelligence: {topic_title}
+**Science, Innovation & Future Tech Ecosystem • India Intelligence**
+
+### 🔬 1. Technology Overview: {topic_title}
+* **Emerging Frontier:** {topic_title} represents an active domain of research and development within India's high-technology ecosystem.
+* **Academic & Industrial Research:** Spearheaded by the premier Indian Institutes of Technology (IITs), Indian Institute of Science (IISc), and CSIR national laboratories.
+
+---
+
+### 🇮🇳 2. National Ecosystem & DeepTech Acceleration
+* **National Research Framework:** Coordinated under the aegis of the Department of Science and Technology (DST) and Ministry of Electronics & IT (MeitY).
+* **Startup Incubation:** Thriving deeptech innovation hubs across Bengaluru, Hyderabad, and Pune.
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 🏛️ **Department of Science & Technology (DST):** [dst.gov.in](https://dst.gov.in/)
+* 🔬 **Council of Scientific & Industrial Research (CSIR):** [csir.res.in](https://www.csir.res.in/)
+* 🇮🇳 **National Portal of India:** [india.gov.in](https://www.india.gov.in/)"""
+
+    prompt = f"""
+You are the Science, Innovation & Future Tech Specialist of 🇮🇳 India Educational AI Intelligence Agent (@india-intel-agent).
+Topic: "{topic_title}"
+Live Web Search Data:
+{extract}
+
+Generate a clear, authoritative, and structured technology briefing for "{topic_title}" with focus on India's technological ecosystem, initiatives, and institutions.
+"""
+    output = safe_llm_invoke([HumanMessage(content=prompt)], search_fallback)
     resp = make_ai_response(output, None)
     return {
         "workflow_stage": "science_dossier",
@@ -2782,195 +2961,7 @@ I am an autonomous intelligence agent dedicated exclusively to the **Republic of
     }
 
 
-def currency_converter_node(state: AgentState) -> AgentState:
-    """Real-Time Foreign Exchange (Forex) Converter Node."""
-    user_query = get_message_content(state["messages"][-1])
-    clean_query, form_params = parse_incoming_input(user_query)
 
-    # Extract amount and currency from query or form
-    amount = 100.0
-    from_curr = "USD"
-
-    if "amount" in form_params:
-        try:
-            amount = float(form_params["amount"])
-        except Exception:
-            amount = 100.0
-    else:
-        amt_match = re.search(r'(\d+(?:\.\d+)?)', clean_query)
-        if amt_match:
-            try:
-                amount = float(amt_match.group(1))
-            except Exception:
-                pass
-
-    if "currency" in form_params:
-        from_curr = str(form_params["currency"]).upper()
-    else:
-        for c in ["EUR", "GBP", "AED", "JPY", "CAD", "AUD", "SGD", "USD"]:
-            if c.lower() in clean_query.lower():
-                from_curr = c
-                break
-
-    conv = services.convert_currency_to_inr(amount, from_curr)
-    inr_amt = conv["amount_inr"]
-    rate = conv["exchange_rate"]
-    power_bullets = "\n".join(f"* {p}" for p in conv["purchasing_power"])
-
-    rates = services.fetch_live_forex_rates()
-    inr_usd = rates.get("INR", 86.85)
-
-    output = f"""# 💱 Real-Time Foreign Exchange & Currency Intelligence
-**Live Interbank Forex Feed • India Economic Intelligence**
-
-### 📊 Conversion Result: {amount} {from_curr} ➔ INR
-* **Exchange Rate:** **1 {from_curr} = ₹{rate} INR**
-* **Converted Total:** **₹{inr_amt:,.2f} INR** *(Indian Rupees)*
-
----
-
-### 🛒 Local Purchasing Power in India (What ₹{inr_amt:,.0f} buys):
-{power_bullets}
-
----
-
-### 📈 Major Global Currencies Benchmark against INR (₹):
-| Foreign Currency | Code | Current Live Exchange Rate |
-| :--- | :--- | :--- |
-| **US Dollar** | `USD` | **1 USD = ₹{inr_usd:.2f} INR** |
-| **Euro** | `EUR` | **1 EUR = ₹{round(inr_usd * (1.0 / rates.get('EUR', 0.92)), 2):.2f} INR** |
-| **British Pound** | `GBP` | **1 GBP = ₹{round(inr_usd * (1.0 / rates.get('GBP', 0.77)), 2):.2f} INR** |
-| **UAE Dirham** | `AED` | **1 AED = ₹{round(inr_usd / 3.6725, 2):.2f} INR** |
-| **Canadian Dollar** | `CAD` | **1 CAD = ₹{round(inr_usd * (1.0 / rates.get('CAD', 1.38)), 2):.2f} INR** |
-| **Australian Dollar** | `AUD` | **1 AUD = ₹{round(inr_usd * (1.0 / rates.get('AUD', 1.52)), 2):.2f} INR** |
-
-*💡 Tip: Use the interactive converter dropdown below to convert any other amount or currency directly inside ASI:One.*"""
-
-    resp = make_ai_response(output, get_currency_card_payload())
-    return {
-        "workflow_stage": "currency_converter",
-        "final_output": resp["final_output"],
-        "messages": resp["messages"],
-    }
-
-
-def payment_checkout_node(state: AgentState) -> AgentState:
-    """Fetch.ai Payment Protocol Node: Gates and issues cryptographically signed VIP passes and dossiers."""
-    user_query = get_message_content(state["messages"][-1])
-    clean_query, form_params = parse_incoming_input(user_query)
-
-    is_complete_action = (
-        form_params.get("action") == "complete_payment"
-        or "confirm payment" in clean_query.lower()
-        or "verify payment" in clean_query.lower()
-        or "tx_hash" in form_params
-        or any(w in clean_query.lower() for w in ["paid", "complete payment", "0x", "instant_demo"])
-    )
-
-    service_tier = str(form_params.get("service_tier", "vip_pass")).lower()
-    tx_hash = form_params.get("tx_hash") or ""
-
-    if is_complete_action or ("pay" in clean_query.lower() and len(clean_query.split()) >= 3):
-        # Issue verified credential
-        if "institutional" in service_tier or "dossier" in clean_query.lower() or "economic" in clean_query.lower():
-            output = payment.issue_institutional_dossier("Indian Macro & Capital Markets", tx_hash)
-        else:
-            dest = state.get("entity_name") or "Jaipur"
-            params = state.get("extracted_params") or {}
-            days = int(params.get("days", 3))
-            travelers = int(params.get("travelers", 2))
-            budget = params.get("budget", "Budget")
-            output = payment.issue_vip_travel_pass(dest, days, travelers, budget, tx_hash)
-        resp = make_ai_response(output, None)
-    else:
-        # Show interactive checkout card
-        output = f"""# 💳 Fetch.ai Payment Protocol & Monetization Clearing
-**Autonomous Agent Micropayments • Fetch.ai Dorado / Mainnet Rail**
-
-Welcome to the **India Intel Agent Treasury & Licensing Gateway**. You can unlock premium verified intelligence using **ASI** or **FET** tokens:
-
-### 🌟 Premium Services Catalog:
-1. 👑 **Verified VIP All-India Expedited Travel Pass (1.0 ASI / FET):**
-   * Cryptographically signed verifiable travel pass with digital security seal.
-   * Priority 24/7 IRCTC Tatkal assistance guidelines & station lounge protocols.
-   * Emergency helplines (Tourist Police 1363, National Emergency 112, Railway Madad 139).
-   * Embassy & consular assistance directory for foreign visitors.
-2. 📊 **Institutional Investor Economic Intelligence Dossier (2.0 ASI / FET):**
-   * 5-year macro econometric forecast (FY2026-FY2030).
-   * Sectoral FDI equity limits & SEBI FPI compliance matrix.
-
----
-
-### 🏦 Agent Treasury Information:
-* **Treasury Recipient Address:** `{payment.AGENT_TREASURY_ADDRESS}`
-* **Network:** `Fetch.ai Dorado Testnet` / `Mainnet (ASI)`
-* **Instant Verification:** Select *Instant One-Click Verification* below for immediate testnet credential issuance during the hackathon!
-
-👉 *Use the interactive payment card below to select your tier and unlock your pass:*"""
-        resp = make_ai_response(output, payment.get_payment_card_payload("vip_pass"))
-
-    return {
-        "workflow_stage": "payment_checkout",
-        "final_output": resp["final_output"],
-        "messages": resp["messages"],
-    }
-
-
-def transit_specialist_node(state: AgentState) -> AgentState:
-    """Multi-Agent Transit Specialist Node: Coordinates with companion Transit Subagent."""
-    user_query = get_message_content(state["messages"][-1])
-    clean_query, form_params = parse_incoming_input(user_query)
-
-    dest = state.get("entity_name") or "Jaipur"
-    origin = "Delhi"
-
-    for c in FLAGSHIP_CITIES.keys():
-        if c != dest.lower() and c in clean_query.lower():
-            origin = c.title()
-            break
-
-    transit_resp = transit_agent.resolve_transit_itinerary(origin, dest, "Train")
-    opt = transit_resp.options[0] if transit_resp.options else None
-
-    if opt:
-        opt_md = f"""* **Recommended Service:** **{opt.service_name}** (#{opt.service_number})
-* **Schedule:** 🕒 Departure: **{opt.departure_time}** | Arrival: **{opt.arrival_time}**
-* **Duration:** ⏱️ **{opt.duration}**
-* **Rail Distance:** 📏 **{opt.distance_km} km**
-* **Estimated Fare:** 💰 **{opt.fare_estimate}**
-* **Stations:** {opt.origin_station} ➔ {opt.destination_station}"""
-        booking_url = opt.booking_url
-    else:
-        opt_md = "* Regular superfast express rail connectivity available daily."
-        booking_url = "https://www.irctc.co.in/nget/train-search"
-
-    output = f"""# 🚆 Multi-Agent Transit & Mobility Intelligence
-**Curated by Companion Transit Specialist Subagent (`@transit-agent`)**
-
-### 📍 Route: {transit_resp.origin} ➔ {transit_resp.destination}
-{opt_md}
-
----
-
-### 💡 Subagent Transit Advisory:
-{transit_resp.advisory}
-
----
-
-### 🚀 Direct Booking Links:
-* 🚆 **Book Train on IRCTC:**  
-  👉 **[ 🔗 Click to Book on Official IRCTC Portal ]({booking_url})**
-* ✈️ **Search Alternative Flights:**  
-  👉 **[ 🔗 Click to Check Google Flights ]({transit_resp.flight_search_url})**
-* 👑 **Upgrade to VIP Travel Pass:**  
-  👉 *Reply `VIP Pass` or `Pay` to get 24/7 Tatkal assist & station lounge access.*"""
-
-    resp = make_ai_response(output, None)
-    return {
-        "workflow_stage": "transit_specialist",
-        "final_output": resp["final_output"],
-        "messages": resp["messages"],
-    }
 
 
 def destinations_carousel_node(state: AgentState) -> AgentState:
@@ -3052,26 +3043,18 @@ def supervisor_router(state: AgentState) -> AgentState:
         dest = form_params.get("destination") or "Jaipur"
         return {"workflow_stage": "tourism_briefing", "entity_name": str(dest).lower(), "extracted_params": None}
 
-    # E. Real-Time Currency Converter CTA
-    if form_action == "convert_forex" or form_params.get("source_currency"):
-        return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
-
-    # F. Payment Protocol & VIP Pass CTA
-    if form_action == "complete_payment" or form_params.get("service_tier"):
-        return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
-
-    # G. Tourism Trip Planner Form Submission CTA
+    # E. Tourism Trip Planner Form Submission CTA
     if form_action == "plan_trip" or (form_params.get("destination") and form_params.get("days")):
         dest = form_params.get("destination") or "Jaipur"
         parsed = parse_travel_params(clean_query, form_params)
         return {"workflow_stage": "tourism_planner", "entity_name": str(dest).lower(), "extracted_params": parsed}
 
-    # H. Explore City CTA from Carousel or Destination list
+    # F. Explore City CTA from Carousel or Destination list
     if form_action == "explore_city" and form_params.get("destination"):
         dest = str(form_params["destination"]).strip()
         return {"workflow_stage": "tourism_briefing", "entity_name": dest.lower(), "extracted_params": None}
 
-    # I. Domain Explorer Form Submission (Option 1 - 6 Selection)
+    # G. Domain Explorer Form Submission (Option 1 - 4 Selection)
     if form_action == "select_domain" or "domain" in form_params:
         selected_domain = str(form_params.get("domain", "")).lower()
         if "economy" in selected_domain or "1" in selected_domain:
@@ -3081,11 +3064,7 @@ def supervisor_router(state: AgentState) -> AgentState:
         if "culture" in selected_domain or "3" in selected_domain:
             return {"workflow_stage": "culture_form", "entity_name": None, "extracted_params": None}
         if "science" in selected_domain or "4" in selected_domain:
-            return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": None}
-        if "currency" in selected_domain or "forex" in selected_domain or "5" in selected_domain:
-            return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
-        if "payment" in selected_domain or "pay" in selected_domain or "6" in selected_domain:
-            return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
+            return {"workflow_stage": "science_form", "entity_name": None, "extracted_params": None}
 
     # ----------------------------------------------------
     # 3. Direct Landing Page Options & Domain Shortcuts (User typing numbers or keywords)
@@ -3110,43 +3089,15 @@ def supervisor_router(state: AgentState) -> AgentState:
 
     # Science shortcut (Option 4)
     if q_lower in ["4", "option 4", "opt 4", "open science"] or (
-        q_lower.strip() in ["science", "future tech", "technology", "science & tech"] and not any(kw in q_lower for kw in ["isro", "chip", "semiconductor", "ai", "quantum", "5g"])
+        q_lower.strip() in ["science", "future tech", "technology", "science & tech"] and not any(kw in q_lower for kw in ["isro", "chip", "semiconductor", "ai", "quantum", "5g", "biotechnology", "drone"])
     ):
-        return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": None}
-
-    # Currency shortcut (Option 5)
-    if q_lower in ["5", "option 5", "opt 5", "open currency", "currency", "forex"]:
-        return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
-
-    # Payment shortcut (Option 6)
-    if q_lower in ["6", "option 6", "opt 6", "vip pass", "payment"]:
-        return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
+        return {"workflow_stage": "science_form", "entity_name": None, "extracted_params": None}
 
     # ----------------------------------------------------
-    # 4. Interactive Carousel & Transit Specialist Inquiries
+    # 4. Interactive Destinations Carousel
     # ----------------------------------------------------
-    # Destinations Carousel check
     if any(kw in q_lower for kw in ["carousel", "top destinations", "browse cities", "explore destinations"]):
         return {"workflow_stage": "destinations_carousel", "entity_name": None, "extracted_params": None}
-
-    # Transit Specialist inquiry check
-    if any(kw in q_lower for kw in ["transit to", "train to", "vande bharat to", "gatimaan to", "how to reach", "trains to"]) and any(city in q_lower for city in FLAGSHIP_CITIES):
-        matched_transit_city = next(city for city in FLAGSHIP_CITIES if city in q_lower)
-        return {"workflow_stage": "transit_specialist", "entity_name": matched_transit_city, "extracted_params": None}
-
-    # Real-Time Currency Converter natural language check
-    if any(kw in q_lower for kw in [
-        "forex", "exchange rate", "convert usd", "convert eur", "convert gbp", "convert aed",
-        "usd to inr", "eur to inr", "how much is $", "dollar to rupee", "rate of rupee", "convert currency"
-    ]):
-        return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
-
-    # Payment Protocol natural language check
-    if any(kw in q_lower for kw in [
-        "vip pass", "buy pass", "unlock pass", "unlock dossier", "fet token", "asi token",
-        "pay 1 asi", "pay 1 fet", "travel pass"
-    ]) or (q_lower.startswith("pay") and len(q_lower.split()) <= 4):
-        return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
 
     # ----------------------------------------------------
     # 5. Check for Tourism Flow (Destinations, Cities, Form Submissions, Itineraries)
@@ -3292,9 +3243,6 @@ def route_step(state: AgentState) -> str:
         "science_dossier": "science_dashboard_node",
         "state_composite": "state_composite_node",
         "out_of_scope": "out_of_scope_node",
-        "currency_converter": "currency_converter_node",
-        "payment_checkout": "payment_checkout_node",
-        "transit_specialist": "transit_specialist_node",
         "destinations_carousel": "destinations_carousel_node",
     }
     return stage_to_node.get(stage, "landing_page_node")
@@ -3320,9 +3268,6 @@ workflow.add_node("science_intake_form_node", science_intake_form_node)
 workflow.add_node("science_dashboard_node", science_dashboard_node)
 workflow.add_node("state_composite_node", state_composite_node)
 workflow.add_node("out_of_scope_node", out_of_scope_node)
-workflow.add_node("currency_converter_node", currency_converter_node)
-workflow.add_node("payment_checkout_node", payment_checkout_node)
-workflow.add_node("transit_specialist_node", transit_specialist_node)
 workflow.add_node("destinations_carousel_node", destinations_carousel_node)
 
 # Add Edges
@@ -3345,9 +3290,6 @@ workflow.add_conditional_edges(
         "science_dashboard_node": "science_dashboard_node",
         "state_composite_node": "state_composite_node",
         "out_of_scope_node": "out_of_scope_node",
-        "currency_converter_node": "currency_converter_node",
-        "payment_checkout_node": "payment_checkout_node",
-        "transit_specialist_node": "transit_specialist_node",
         "destinations_carousel_node": "destinations_carousel_node",
     },
 )
@@ -3366,9 +3308,6 @@ workflow.add_edge("science_intake_form_node", END)
 workflow.add_edge("science_dashboard_node", END)
 workflow.add_edge("state_composite_node", END)
 workflow.add_edge("out_of_scope_node", END)
-workflow.add_edge("currency_converter_node", END)
-workflow.add_edge("payment_checkout_node", END)
-workflow.add_edge("transit_specialist_node", END)
 workflow.add_edge("destinations_carousel_node", END)
 
 # Compile
