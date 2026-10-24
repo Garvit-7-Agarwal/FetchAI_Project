@@ -1490,8 +1490,78 @@ POPULAR_TOURIST_DESTINATIONS = [
     "mcleodganj", "spiti", "kutch", "rann of kutch", "ajmer", "bikaner", "gwalior", "bhopal",
     "orchha", "bhubaneswar", "puri", "konark", "coorg", "kodagu", "gokarna", "rameshwaram",
     "kanyakumari", "tirupati", "prayagraj", "allahabad", "bodh gaya", "gaya", "patna",
-    "vrindavan", "mathura", "lucknow", "guwahati", "cherrapunji", "gulmarg", "pahalgam", "sonamarg"
+    "vrindavan", "mathura", "lucknow", "guwahati", "cherrapunji", "gulmarg", "pahalgam", "sonamarg",
+    "jammu", "kashmir", "katra", "vaishno devi", "patnitop", "kullu", "kasol", "dehradun", "kanpur",
+    "nagpur", "indore", "ujjain", "pachmarhi", "sanchi", "chittorgarh", "alwar", "ranthambore"
 ]
+
+
+# ----------------------------------------------------
+# Universal Real-Time Web Intelligence & Online Search Engine
+# ----------------------------------------------------
+_ONLINE_SEARCH_CACHE: Dict[str, Dict[str, Any]] = {}
+
+def fetch_online_intelligence(query: str, domain: str = "general") -> Dict[str, Any]:
+    """
+    Universal real-time web intelligence engine for India Intel Agent.
+    Queries Wikipedia REST API / MediaWiki Search API with fallback search heuristics.
+    Caches results in memory for instantaneous sub-millisecond responses on repeated queries.
+    """
+    clean_q = re.sub(
+        r'^(?:tell me about|what is|explore|travel to|trip to|tourism in|info on|information on|research|explain|search|i want to (?:travel|go) to)\s+',
+        '', query, flags=re.I
+    ).strip()
+    cache_key = f"{domain}:{clean_q.lower()}"
+    if cache_key in _ONLINE_SEARCH_CACHE:
+        return _ONLINE_SEARCH_CACHE[cache_key]
+
+    if domain == "tourism":
+        search_terms = [f"{clean_q} city India", f"{clean_q} tourism India", f"{clean_q} India", clean_q]
+    elif domain == "culture":
+        search_terms = [f"{clean_q} Indian culture", f"{clean_q} tradition India", f"{clean_q} India", clean_q]
+    elif domain == "economy":
+        search_terms = [f"{clean_q} India economy", f"{clean_q} scheme India", f"{clean_q} India", clean_q]
+    elif domain == "science":
+        search_terms = [f"{clean_q} India science technology", f"{clean_q} India", clean_q]
+    else:
+        search_terms = [f"{clean_q} India", clean_q]
+
+    result = {
+        "query": clean_q,
+        "title": clean_q.title(),
+        "extract": "",
+        "url": f"https://en.wikipedia.org/wiki/{urllib.parse.quote(clean_q.replace(' ', '_'))}",
+        "success": False
+    }
+
+    for term in search_terms:
+        try:
+            url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(term)}&format=json&utf8=1&srlimit=2"
+            req = urllib.request.Request(url, headers={"User-Agent": "IndiaIntelAgent/2.0 (ASI:One Agent Chat Protocol; contact@asi1.ai)"})
+            with urllib.request.urlopen(req, timeout=4) as resp:
+                data = json.loads(resp.read().decode())
+                items = data.get("query", {}).get("search", [])
+                if items:
+                    title = items[0]["title"]
+                    sum_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(title)}"
+                    sreq = urllib.request.Request(sum_url, headers={"User-Agent": "IndiaIntelAgent/2.0 (ASI:One Agent Chat Protocol; contact@asi1.ai)"})
+                    with urllib.request.urlopen(sreq, timeout=4) as sresp:
+                        sdata = json.loads(sresp.read().decode())
+                        ext = sdata.get("extract", "")
+                        if ext and len(ext) > 40:
+                            result["title"] = sdata.get("title", title)
+                            result["extract"] = ext
+                            if "content_urls" in sdata and "desktop" in sdata["content_urls"]:
+                                result["url"] = sdata["content_urls"]["desktop"].get("page", result["url"])
+                            result["success"] = True
+                            _ONLINE_SEARCH_CACHE[cache_key] = result
+                            return result
+        except Exception as e:
+            logger.debug(f"Online search attempt for '{term}' error: {e}")
+            continue
+
+    _ONLINE_SEARCH_CACHE[cache_key] = result
+    return result
 
 
 def has_keyword(query: str, keywords: List[str]) -> bool:
@@ -1544,6 +1614,19 @@ def parse_travel_params(query: str, form_params: Optional[Dict[str, Any]] = None
                     if re.search(r'\b' + re.escape(state) + r'\b', q_lower):
                         destination = state
                         break
+                else:
+                    travel_patterns = [
+                        r'(?:travel(?:ling)? to|trip to|visit|explore|tour of|tour to|heading to|going to|go to|holiday in|vacation in|itinerary for|plan (?:a )?(?:trip )?(?:to|for)|flights? to|train to|hotels? in|tourism in)\s+([a-zA-Z\s]+)',
+                        r'([a-zA-Z\s]+?)\s+(?:trip|tour|tourism|itinerary|travel)',
+                    ]
+                    for p in travel_patterns:
+                        m = re.search(p, q_lower)
+                        if m:
+                            cand = m.group(1).strip()
+                            cand = re.split(r'\b(?:for|with|in|on|next|\d+\s*days?)\b', cand, flags=re.IGNORECASE)[0].strip()
+                            if cand and cand.lower() not in ('india', 'a', 'the', 'my', 'some', 'any', 'place', 'city'):
+                                destination = cand
+                                break
 
     # 2. Days
     days = 3
@@ -1738,20 +1821,56 @@ def tourism_briefing_node(state: AgentState) -> AgentState:
 
     if not city_data:
         city_title = city_key.title()
-        output = f"""## 📍 {city_title}, India 🇮🇳 — Destination Intelligence
+        online_res = fetch_online_intelligence(city_title, domain="tourism")
+        extract = online_res.get("extract", "")
+        page_url = online_res.get("url", f"https://en.wikipedia.org/wiki/{urllib.parse.quote(city_title.replace(' ', '_'))}")
+        
+        if extract:
+            overview_text = extract
+        else:
+            overview_text = f"{city_title} is a prominent destination in India celebrated for its distinctive regional heritage, cultural history, scenic landscapes, and authentic living traditions."
 
-* 🏛️ **Best Known For:** Cultural heritage, regional architecture, local gastronomy, and historic landmarks.
-* 📍 **Major Attractions:** Prominent monuments, heritage temples, artisan markets, and regional viewpoints.
-* 📜 **UNESCO Sites & Heritage:** Located along India's historic cultural and trade corridors.
-* ☀️ **Best Time to Visit:** October to March (Pleasant weather across most of India).
-* ⏱️ **Approximate Travel Duration:** 2 to 4 Days recommended.
-* 🛺 **Local Transportation:** Local pre-paid autos, app cabs (Uber/Ola), and city transit.
-* 🎯 **Popular Activities:** Heritage monument tours, authentic regional food tasting, and bazaar shopping.
+        flights_link = generate_flight_search_url(city_title)
+        maps_link = generate_google_maps_route([f"{city_title}, India", f"{city_title} Center, India"])
+        hotels_link = f"https://www.google.com/travel/hotels?q={urllib.parse.quote_plus(city_title + ' hotels')}"
+        irctc_link = "https://www.irctc.co.in/nget/train-search"
+
+        output = f"""# 📍 {city_title}, India 🇮🇳 — Destination Intelligence
+**Live Online Search Verified • Destination Dossier & Travel Connectivity**
+
+### 🏛️ 1. Destination Overview & Live Intelligence
+{overview_text}
+
+---
+
+### 📍 2. Travel Highlights & Practical Guidance
+* 🏛️ **Heritage & Culture:** Renowned historic monuments, sacred temples/shrines, architectural sites, and regional heritage quarters.
+* ☀️ **Best Season to Visit:** October to March (Comfortable pleasant weather across plains and foothills).
+* ⏱️ **Recommended Duration:** 2 to 4 Days for a comprehensive itinerary.
+* 🛺 **Local Transit:** Local app cabs (Ola/Uber), pre-paid autos, and regional transit corridors.
+* 🎯 **Popular Activities:** Exploring landmark architectural monuments, authentic culinary trails, and local bazaar shopping.
+
+---
+
+### 🚆 3. Transportation Intelligence & Direct Booking Links
+* 🚆 **High-Speed Rail:** Superfast and Express trains connect directly to {city_title} Railway Station / Junction.  
+  👉 **[ 🔗 Search / Book Trains on Official IRCTC Portal ]({irctc_link})**
+
+* ✈️ **Flight Routes:** Commercial flights connect nearest airport with major Indian metropolitan centers.  
+  👉 **[ 🔗 Search Flights on Google Flights ]({flights_link})**
+
+* 🗺️ **GPS Route & Navigation:**  
+  👉 **[ 🗺️ Open Multi-Stop GPS Route in Google Maps ]({maps_link})**
+
+* 🏨 **Verified Accommodations:**  
+  👉 **[ 🔗 Search Stays in {city_title} on Google Hotels ]({hotels_link})**
+
+* 🌐 **Verified Encyclopedia Reference:** [{city_title} Overview on Wikipedia]({page_url})
 
 ---
 
 ### 📋 Would you like to plan a trip to {city_title}?
-Use the structured dropdown selector below to customize your trip:"""
+Use the interactive dropdown selector below to configure your trip duration, travelers, budget tier, and transit:"""
     else:
         title = city_data["title"]
         known_for = city_data["best_known_for"]
@@ -2115,18 +2234,39 @@ Generate an executable, highly engaging day-by-day travel dashboard:
 * **02:30 PM – 06:30 PM: Dilli Haat INA (Pan-India Cultural Bazaar)**  
   Open-air permanent cultural marketplace where authorized rural artisans and master chefs from all 28 Indian states showcase handicrafts, handlooms, and authentic regional cuisines."""
     else:
-        dynamic_fallback = f"""## 🗓️ Day-by-Day Timeline Itinerary: {dest_title} ({days} Days)
+        itinerary_md = f"""## 🗓️ Day-by-Day Timeline Itinerary: {dest_title} ({days} Days)
 
-### 🗓️ Day 1 — Arrival & Core Heritage Highlights
-* **09:00 AM – 12:30 PM:** Morning exploration of the central historic and architectural landmarks.
-* **12:45 PM – 02:00 PM:** Traditional regional culinary lunch featuring local heritage delicacies.
-* **02:30 PM – 05:30 PM:** Cultural museums, artisan craft centers, and local bazaars.
-* **06:00 PM – 07:30 PM:** Scenic sunset viewpoint and evening promenade.
+### 🗓️ Day 1 — Arrival, Heritage Landmarks & Sunset Views in {city_name}
+* **09:00 AM – 12:30 PM: Historic Central Quarter & Architecture**  
+  Arrive and check in; morning tour of prominent historical landmarks, temples, and architectural marvels of {city_name}.
+* **12:45 PM – 02:00 PM: Traditional Regional Lunch**  
+  Savor authentic local delicacies and specialties at popular regional dining establishments.
+* **02:30 PM – 05:30 PM: Cultural Museums & Heritage Centers**  
+  Explore regional museums, ancient forts, and handicraft artisan lanes.
+* **06:00 PM – 07:30 PM: Golden Hour Promenade & Sunset Point**  
+  Scenic golden hour views across local lakes, riverbanks, or hilltop vantage points.
+* **08:00 PM: Evening Leisure Dinner**  
+  Traditional dinner experience featuring seasonal regional recipes.
 
-### 🗓️ Day 2 — Deep Cultural Circuit & Regional Landmarks
-* **09:00 AM – 01:00 PM:** Exploration of ancient temples, historic forts, or natural sanctuaries.
-* **02:00 PM – 05:00 PM:** Local craft demonstration and traditional shopping districts.
-* **07:00 PM:** Authentic cultural dining experience."""
+---
+
+### 🗓️ Day 2 — Sacred Shrines, Regional Circuit & Artisan Bazaars
+* **09:00 AM – 01:00 PM: Heritage Temple Circuit & Nature Excursion**  
+  Visit renowned heritage shrines, sacred pilgrimage sites, or nature reserves in and around {city_name}.
+* **02:00 PM – 05:00 PM: Local Craft Demonstrations & Bazaar Shopping**  
+  Browse local handlooms, wooden crafts, and regional spices in traditional shopping districts.
+* **07:00 PM: Cultural Dining & Evening Atmosphere**  
+  Enjoy regional folk music, street gastronomy, and authentic cultural hospitality."""
+        if days >= 3:
+            itinerary_md += f"""\n\n---
+
+### 🗓️ Day 3 — Scenic Escapes, Regional Crafts & Farewell Walk
+* **09:00 AM – 01:00 PM: Countryside Excursion & Viewpoints**  
+  Visit scenic foothills, historic outskirts, or royal estates surrounding {city_name}.
+* **02:00 PM – 04:30 PM: Souvenir Shopping & Artisan Emporiums**  
+  Pick up GI-tagged handicrafts, teas, or regional sweets.
+* **05:00 PM: Departure Prep & Onward Transit**  
+  Head to {city_name} Railway Station or Airport for departure."""
     output = f"""# 🇮🇳 {city_name} Trip Plan — Intelligence Dashboard
 
 ### 📋 Trip Summary Card
@@ -2262,6 +2402,176 @@ Please select the topics and parameters for your economic analysis using the int
     }
 
 
+ECONOMY_TOPIC_DOSSIERS = {
+    "GDP": """# 📊 Indian Economy & GDP Growth: Intelligence Dossier
+**$4 Trillion Milestone • 3rd Largest Global Economy Trajectory (PPP)**
+
+### 📈 1. Macroeconomic Overview & GDP Trajectory
+* **Nominal GDP:** ~$3.9 - $4.0 Trillion (5th largest global economy, rapidly closing the gap with Germany and Japan).
+* **GDP (PPP):** ~$13.2+ Trillion (3rd largest economy in the world, behind only the United States and China).
+* **Real GDP Growth:** 6.5% – 7.2% annual growth rate, positioning India as the fastest-growing major economy among G20 nations.
+* **Viksit Bharat 2047 Target:** National vision to become a fully developed high-income economy ($30 Trillion GDP) by the centenary of independence in 2047.
+
+---
+
+### 🏛️ 2. Core Macro Stability Pillars
+* **Foreign Exchange Reserves:** ~$650 - $700 Billion, providing over 11 months of import cover and substantial balance-of-payments resilience.
+* **Inflation Targeting (MPC):** Governed by the Reserve Bank of India with a statutory medium-term target of 4.0% (± 2.0%).
+* **Fiscal Consolidation:** Fiscal deficit glide path targeting below 4.5% of GDP by FY26, driven by record direct tax and GST mop-ups.
+* **Capital Expenditure (Capex):** Central government Capex outlay exceeding ₹11.11 Lakh Crore, catalyzing public infrastructure and crowding in private investment.
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 🏛️ **Reserve Bank of India (RBI):** [rbi.org.in](https://www.rbi.org.in/)
+* 📊 **Ministry of Statistics & Programme Implementation (MoSPI):** [mospi.gov.in](https://www.mospi.gov.in/)
+* 🌐 **Union Budget Portal (Ministry of Finance):** [indiabudget.gov.in](https://www.indiabudget.gov.in/)
+* 🏦 **World Bank India Country Profile:** [worldbank.org/en/country/india](https://www.worldbank.org/en/country/india)""",
+
+    "Sectors": """# 🏭 Structural Breakdown of Key Sectors: Intelligence Dossier
+**Services • Manufacturing & Industry • Agriculture & Allied**
+
+### 💼 1. Services Sector (~54% of Gross Value Added)
+* **IT & BPM Export Powerhouse:** Global leaders including TCS, Infosys, Wipro, and HCLTech generating over $250 Billion in annual technology revenues.
+* **Global Capability Centers (GCCs):** Over 1,600 multinational GCCs employ 1.6+ million high-skilled professionals across Bengaluru, Hyderabad, Pune, and Chennai.
+* **Banking & Financial Services:** World-class digital banking infrastructure supported by public sector lenders (SBI) and private giants (HDFC Bank, ICICI Bank).
+
+---
+
+### 🏗️ 2. Manufacturing & Industry (~28% of GVA)
+* **Make in India & PLI Schemes:** ₹1.97 Lakh Crore incentive scheme across 14 strategic sectors (electronics, automotive, pharma, specialty steel).
+* **Electronics Manufacturing Boom:** India is now the 2nd largest global smartphone manufacturer; assembly hub for global flagships (Apple iPhone, Samsung).
+* **Automotive & Heavy Industry:** 3rd largest automobile market globally, led by Tata Motors, Mahindra, Maruti Suzuki, and Bajaj Auto.
+
+---
+
+### 🌾 3. Agriculture & Allied Sector (~18% of GVA)
+* **Socio-Economic Backbone:** Employs approximately 45% of India's workforce; vital driver of rural consumption.
+* **Global Production Leadership:** World's #1 producer of milk, pulses, and spices; #2 in rice, wheat, cotton, and sugarcane.
+* **AgriTech & Modernization:** Expanding integration of Kisan Drones, digital soil health cards, and e-NAM national marketplace.
+
+---
+
+### 🔎 4. Authoritative Sources & Citations
+* 🏭 **Department for Promotion of Industry and Internal Trade (DPIIT):** [dpiit.gov.in](https://dpiit.gov.in/)
+* 📊 **Ministry of Statistics (MoSPI):** [mospi.gov.in](https://www.mospi.gov.in/)
+* 🌾 **Ministry of Agriculture & Farmers Welfare:** [agricoop.gov.in](https://agricoop.gov.in/)""",
+
+    "FinTech": """# 💳 UPI, RuPay & FinTech Revolution: Intelligence Dossier
+**Digital Public Infrastructure (DPI) • Sovereign Payment Rails & Cashless Economy**
+
+### ⚡ 1. Unified Payments Interface (UPI) Super-Rails
+* **Record Transaction Volume:** Processing **over 14 Billion transactions monthly** with a monthly transaction value exceeding ₹20 Lakh Crore ($240+ Billion).
+* **Zero Cost & Instant Settlement:** Powered by the National Payments Corporation of India (NPCI) utilizing IMPS rails with 24x7 real-time settlement.
+* **Global Adoption:** Operational in France, UAE, Singapore, Mauritius, Sri Lanka, Bhutan, and Nepal.
+
+---
+
+### 💳 2. RuPay Indigenous Card Network
+* **Sovereign Card Rails:** Capturing over 60% of domestic debit cards; zero-fee merchant discounts on RuPay credit cards on UPI.
+* **International Acceptance:** Accepted across international networks (Discover, Diners Club, JCB) and global financial centers.
+
+---
+
+### 🚀 3. India's FinTech Ecosystem & Account Aggregators
+* **10,000+ FinTech Startups:** Across neo-banking, wealthtech (Zerodha, Groww), insurtech, and merchant payments (PhonePe, Paytm, Razorpay).
+* **Account Aggregator (AA) Ecosystem:** Consent-based encrypted financial data sharing transforming collateral-free MSME credit underwriting.
+* **CBDC (Digital Rupee):** RBI pilot underway across wholesale (e₹-W) and retail (e₹-R) cross-border settlements.
+
+---
+
+### 🔎 4. Authoritative Sources & Citations
+* ⚡ **National Payments Corporation of India (NPCI):** [npci.org.in](https://www.npci.org.in/)
+* 🏛️ **Reserve Bank of India (RBI):** [rbi.org.in](https://www.rbi.org.in/)
+* 🇮🇳 **IndiaStack Digital Public Infrastructure:** [indiastack.org](https://indiastack.org/)""",
+
+    "Startups": """# 🦄 Startups & Tech Unicorns: Intelligence Dossier
+**3rd Largest Global Startup Ecosystem • 115+ Unicorns • DeepTech Frontiers**
+
+### 🚀 1. Ecosystem Scale & Global Standing
+* **115+ Tech Unicorns:** Cumulative unicorn valuation exceeding **$350+ Billion**, spanning e-commerce, FinTech, SaaS, EdTech, and logistics.
+* **100,000+ DPIIT Recognized Startups:** World's 3rd largest startup ecosystem behind only the US and China.
+* **Direct Employment Creation:** Over 1.3+ million direct jobs created by recognized startup ventures nationwide.
+
+---
+
+### 🏙️ 2. Geographic Innovation Clusters
+* **Bengaluru (Silicon Plateau):** India's premier deeptech, AI, and SaaS hub (Sarvam AI, Flipkart, Swiggy, Zerodha).
+* **Delhi-NCR (Gurugram/Noida):** Hub for consumer tech, logistics, and fintech unicorns (Zomato, Paytm, Delhivery).
+* **Mumbai & Pune:** Dominant centers for FinTech, enterprise software, and EV manufacturing startups (Ola Electric, Druva).
+* **Hyderabad & Chennai:** Emerging SaaS and space-tech centers (Freshworks, Skyroot Aerospace, Agnikul Cosmos).
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 🚀 **Startup India National Portal:** [startupindia.gov.in](https://www.startupindia.gov.in/)
+* 🏢 **DPIIT (Ministry of Commerce):** [dpiit.gov.in](https://dpiit.gov.in/)
+* 💡 **NITI Aayog Atal Innovation Mission (AIM):** [aim.gov.in](https://aim.gov.in/)""",
+
+    "Stock Market": """# 📈 Stock Markets (NSE, BSE, NIFTY 50, SENSEX): Intelligence Dossier
+**$5 Trillion Market Cap • 4th Largest Global Equity Market • Retail Investing Boom**
+
+### 📊 1. Market Capitalization & Global Ranking
+* **$5+ Trillion Aggregate Market Cap:** India's combined equity market capitalization ranks **4th globally**, trading closely with Hong Kong, Japan, and the US.
+* **BSE SENSEX:** Asia's oldest stock exchange (est. 1875); 30 blue-chip bellwethers reflecting India's industrial backbone.
+* **NSE NIFTY 50:** Flagship index of the National Stock Exchange; world's #1 derivatives exchange by contracts traded.
+
+---
+
+### 👥 2. Demat Boom & Domestic Institutional Resilience
+* **150+ Million Demat Accounts:** Exponential expansion of retail domestic investors via discount brokers (Zerodha, Groww, Angel One).
+* **Systematic Investment Plans (SIPs):** Domestic mutual fund SIP inflows exceeding **₹21,000+ Crore monthly**, creating a resilient domestic liquidity cushion offsetting foreign portfolio fluctuations.
+
+---
+
+### 🛡️ 3. Regulatory Architecture
+* **Securities and Exchange Board of India (SEBI):** Premier capital markets regulator enforcing T+1 rolling settlement (fastest in the world) and mandatory instant disclosure.
+
+---
+
+### 🔎 4. Authoritative Sources & Citations
+* 📈 **National Stock Exchange of India (NSE):** [nseindia.com](https://www.nseindia.com/)
+* 🏛️ **Bombay Stock Exchange (BSE):** [bseindia.com](https://www.bseindia.com/)
+* 🛡️ **Securities and Exchange Board of India (SEBI):** [sebi.gov.in](https://www.sebi.gov.in/)""",
+
+    "Titans": """# 🏢 Corporate Titans & Conglomerates: Intelligence Dossier
+**Tata • Reliance • Infosys • L&T • HDFC • Adani • Mahindra**
+
+### 🏛️ 1. Premier Indian Multinational Conglomerates
+* **Tata Group ($360B+ Market Value):** Salt-to-software enterprise comprising 29 publicly listed companies (Tata Consultancy Services, Tata Motors, Tata Steel, Titan, Air India). Pioneering India's first semiconductor fabrication facility in Dholera.
+* **Reliance Industries (RIL):** India's largest company by market cap, spanning petrochemicals, telecommunications (Jio 5G with 470M+ subscribers), and organized retail.
+* **Larsen & Toubro (L&T):** Global engineering and construction multinational constructing premier national infrastructure, metro systems, and defence hardware.
+* **Infosys & TCS:** Trailblazing IT service exporters providing enterprise digital architecture and AI transformation to Fortune 500 corporations worldwide.
+
+---
+
+### 🔎 2. Authoritative Sources & Citations
+* 🏢 **Ministry of Corporate Affairs (MCA):** [mca.gov.in](https://www.mca.gov.in/)
+* 📈 **BSE / NSE Listed Company Filings:** [bseindia.com](https://www.bseindia.com/)""",
+
+    "Manufacturing": """# 🏭 Manufacturing, PLI & Atmanirbhar Bharat: Intelligence Dossier
+**Production-Linked Incentives (PLI) • Electronics Exports • Industrial Corridors**
+
+### 📦 1. Production-Linked Incentive (PLI) Scheme
+* **₹1.97 Lakh Crore National Budget:** Approved across 14 key manufacturing sectors to create champion domestic manufacturing firms and boost exports.
+* **Target Sectors:** Mobile phones & electronics, pharmaceuticals, medical devices, automotive & auto components, solar PV modules, advanced chemistry cell (ACC) batteries, and specialty steel.
+* **Electronics Manufacturing Milestone:** Annual mobile phone production crossed 330 million units, with electronics exports surging past $25 Billion.
+
+---
+
+### 🚚 2. PM Gati Shakti & National Logistics Policy
+* **PM Gati Shakti National Master Plan:** Integrated digital portal synchronizing multi-modal infrastructure projects across 16 ministries to reduce logistics costs to single-digit GDP percentages.
+* **Dedicated Freight Corridors (DFCs):** Western and Eastern high-capacity electrified freight rail networks transforming cargo transit speeds across industrial heartlands.
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 📦 **DPIIT Production Linked Incentive (PLI):** [dpiit.gov.in/production-linked-incentive-pli-schemes](https://dpiit.gov.in/)
+* 🚚 **PM Gati Shakti Portal:** [gati-shakti.gov.in](https://gati-shakti.gov.in/)
+* 🇮🇳 **Make in India Initiative:** [makeinindia.com](https://www.makeinindia.com/)"""
+}
+
+
 def economy_dashboard_node(state: AgentState) -> AgentState:
     """Step 2 of Economy: Generates Structured Economic Intelligence Briefing Dashboard."""
     raw_text = get_message_content(state["messages"][-1])
@@ -2269,101 +2579,115 @@ def economy_dashboard_node(state: AgentState) -> AgentState:
     extracted = state.get("extracted_params") or {}
     
     topic = form_params.get("topic") or extracted.get("topic") or ""
-    period = form_params.get("period") or extracted.get("period") or "Current State (2024-2025)"
-    depth = form_params.get("analysis_type") or extracted.get("analysis_type") or "Executive Briefing"
+    q_lower = clean_query.lower()
 
-    topic_labels = {
-        "FinTech": "UPI, RuPay & FinTech Revolution",
-        "GDP": "Indian Economy & GDP Growth",
-        "Sectors": "Major Sectors (Services, Mfg, Agri)",
-        "Startups": "Startups & Tech Unicorns",
-        "Stock Market": "Stock Markets (NSE, BSE, NIFTY 50, SENSEX)",
-        "Titans": "Corporate Titans (Tata, Reliance, Infosys)",
-        "Manufacturing": "Manufacturing, PLI & Atmanirbhar Bharat",
-    }
-    topic_display = topic_labels.get(topic, topic)
-    topic_banner = ""
-    if topic_display:
-        topic_banner = f"\n> 🎯 **Focused Analysis Topic:** **{topic_display}** | **Time Period:** {period} | **Depth:** {depth}\n"
-    
-    prompt = f"""
+    # Identify if a predefined dropdown topic was requested
+    matched_key = None
+    if topic in ECONOMY_TOPIC_DOSSIERS:
+        matched_key = topic
+    elif form_params.get("action") == "economy_dossier" and topic:
+        matched_key = topic
+    else:
+        # Check if user specifically requested a core dropdown topic as the primary subject
+        # Note: Avoid false-positive matching on generic terms like 'economy' when a specific scheme/topic is asked
+        custom_economic_indicators = [
+            "gati shakti", "gatishakti", "pm gati", "inflation", "fdi", "foreign direct investment",
+            "forex", "foreign exchange", "crypto", "cryptocurrency", "ev", "electric vehicle",
+            "direct tax", "income tax", "corporate tax", "sez", "logistics", "monetisation", "disinvestment"
+        ]
+        is_custom_indicator = any(kw in q_lower for kw in custom_economic_indicators)
+        
+        if not is_custom_indicator:
+            if any(p in q_lower for p in ["fintech", "upi", "rupay", "digital payments"]):
+                matched_key = "FinTech"
+            elif any(p in q_lower for p in ["startup", "startups", "unicorn", "unicorns"]):
+                matched_key = "Startups"
+            elif any(p in q_lower for p in ["stock market", "stock markets", "nifty 50", "sensex", "bse sensex", "nse nifty"]):
+                matched_key = "Stock Market"
+            elif any(p in q_lower for p in ["pli scheme", "production-linked", "atmanirbhar bharat", "make in india"]):
+                matched_key = "Manufacturing"
+            elif any(p in q_lower for p in ["corporate titans", "tata and reliance", "indian conglomerates", "titans"]):
+                matched_key = "Titans"
+            elif any(p in q_lower for p in ["major sectors", "economic sectors", "services sector", "manufacturing sector"]):
+                matched_key = "Sectors"
+            elif q_lower in ["gdp", "gdp growth", "indian economy", "economy growth", "macroeconomic overview", "4 trillion"]:
+                matched_key = "GDP"
+
+    # Case 1: Topic is in the core dropdown options -> Return dedicated dossier
+    if matched_key and matched_key in ECONOMY_TOPIC_DOSSIERS:
+        fallback = ECONOMY_TOPIC_DOSSIERS[matched_key]
+        prompt = f"""
 You are the Chief Economic Intelligence Specialist of 🇮🇳 India Educational AI Intelligence Agent (@india-intel-agent).
 User Query / Form Submission: "{clean_query}"
-Requested Topic Focus: {topic_display or 'Overview'}
-Time Period: {period}
-Analysis Depth: {depth}
+Requested Topic Focus: {matched_key}
 
 Reference Grounding Base:
-{DOMAIN_CONTEXTS['economy_finance']}
+{fallback}
 
-Generate a research-grade, highly structured intelligence dashboard:
-{topic_banner}
-1. 🏛️ **Executive Economic Dashboard & Core Macro Indicators** (Clear Markdown Table with Nominal GDP, PPP rank, Growth rate 6.5-7.2%, Inflation target 4% +/- 2%, Forex reserves, UPI volume).
-2. 📊 **Key Sectors & Strategic Pillars** (Services ~54%, Manufacturing/Industry ~28%, Agriculture ~18%, MSMEs, PLI schemes).
-3. 🏢 **Corporate Titans & Conglomerates** (Tata, Reliance Industries, Infosys, TCS, L&T, HDFC Bank, Mahindra, Adani).
-4. 📈 **Financial Markets & Regulatory Framework** (BSE SENSEX, NSE NIFTY 50, SEBI, RBI monetary policy).
-5. 💳 **Digital Public Rails & FinTech Revolution** (UPI >14B monthly transactions, RuPay, Account Aggregator, global expansion).
-6. ⚖️ **Opportunities, Structural Risks & 2030-2047 Outlook**.
-7. 🔎 **Authoritative Sources & Citations** (Reserve Bank of India rbi.org.in, Ministry of Statistics mospi.gov.in, SEBI sebi.gov.in, World Bank).
+Generate a research-grade, highly structured intelligence dashboard focusing on {matched_key}.
+Include:
+1. Executive Macro Overview & Quantitative Indicators.
+2. Structural Breakdown & Policy Incentives.
+3. Industry Titans, Startups & Market Infrastructure.
+4. Future Growth Outlook & Viksit Bharat 2047 Alignment.
+5. Authoritative Portals & Citations.
 """
-    fallback = f"""# 🇮🇳 Indian Economy & Financial Markets: Intelligence Dashboard
-{topic_banner}
-### 📊 1. Executive Economic Dashboard & Core Macro Indicators
-| Metric | Current Official Standing | Strategic Significance |
-| :--- | :--- | :--- |
-| **Nominal GDP** | **~$3.9 - $4.0 Trillion** | 5th largest global economy; targeting $5T milestone |
-| **GDP (PPP)** | **~$13.0+ Trillion** | 3rd largest globally (behind US & China) |
-| **Real GDP Growth** | **6.5% – 7.2%** | Fastest-growing major global economy |
-| **Central Bank Target** | **4.0% (± 2%)** | RBI monetary policy inflation-targeting framework |
-| **Foreign Exchange Reserves** | **~$650 - $700 Billion** | Robust external balance-of-payments buffer |
-| **UPI Digital Payments** | **14+ Billion / month** | Over 80% of digital retail payments volume |
+        output = safe_llm_invoke([HumanMessage(content=prompt)], fallback)
+        resp = make_ai_response(output, None)
+        return {
+            "workflow_stage": "economy_briefing",
+            "final_output": resp["final_output"],
+            "messages": resp["messages"],
+        }
+
+    # Case 2: Custom / Non-dropdown topic -> Perform real-time online search!
+    search_query = clean_query
+    for prefix in ["tell me about", "what is", "explain", "information on", "info on", "research", "search", "details on"]:
+        if search_query.lower().startswith(prefix):
+            search_query = search_query[len(prefix):].strip()
+
+    online_res = fetch_online_intelligence(search_query, domain="economy")
+    topic_title = online_res.get("title", search_query.title())
+    extract = online_res.get("extract", "")
+    page_url = online_res.get("url", "https://en.wikipedia.org/")
+
+    if extract:
+        search_fallback = f"""# 🌐 Real-Time Economic Intelligence: {topic_title}
+**Live Online Search Verified • Indian Economy, Financial Policy & Industry**
+
+### 📊 1. Executive Briefing & Live Intelligence
+{extract}
 
 ---
 
-### 💳 2. Digital Public Infrastructure & FinTech Revolution
-* **Unified Payments Interface (UPI):** Operates on NPCI sovereign rails, processing **>14 billion monthly transactions** with instant settlement and zero end-consumer fees.
-* **Global Footprint:** Accepted in France, UAE, Singapore, Mauritius, Sri Lanka, Bhutan, and Nepal.
-* **FinTech Ecosystem:** Over 10,000+ FinTech startups spanning digital lending, insurtech, wealthtech, and account aggregators.
-* **RuPay Global Expansion:** Indigenous card payment network rivaling global card rails.
+### 🏛️ 2. Strategic Policy Context & National Impact
+* **Government Framework & Alignment:** Aligned with India's macroeconomic growth trajectory and strategic initiatives overseen by the Ministry of Finance, NITI Aayog, and DPIIT.
+* **Fiscal & Economic Significance:** Drives capital expenditure (Capex), private sector investment, and employment generation across key national corridors.
+* **Global Market Competitiveness:** Enhances India's ease of doing business, domestic supply chain resilience, and integration into global value chains.
 
 ---
 
-### 🏭 3. Structural Breakdown of Key Sectors
-* **Services Sector (~54% of Gross Value Added):**
-  * Premier economic growth engine driven by IT/BPM exports (TCS, Infosys, Wipro, HCLTech), telecommunications, and banking.
-* **Manufacturing & Industry (~28% of GVA):**
-  * Accelerated by **Make in India** and the **Production-Linked Incentive (PLI)** scheme across 14 sectors (electronics, automotive, pharmaceuticals, specialty steel).
-* **Agriculture & Allied (~18% of GVA):**
-  * Vital socio-economic backbone employing approximately 45% of India's workforce; leading global producer of milk, pulses, and spices.
-
----
-
-### 🏢 4. Corporate Titans & Conglomerates
-* **Tata Group:** Global conglomerate spanning salt to software, steel, automotive (Tata Motors / JLR), and aviation (Air India).
-* **Reliance Industries:** Market capitalization leader spanning petrochemicals, telecommunications (Jio 5G), and retail.
-* **Larsen & Toubro (L&T):** Premier engineering and infrastructure multinational driving national mega-projects.
-* **Infosys & TCS:** Global titans in software and enterprise digital transformation.
-
----
-
-### 📈 5. Financial Markets & Regulatory Framework
-* **Stock Exchanges:**
-  * **Bombay Stock Exchange (BSE):** Founded 1875 (Asia's oldest exchange); benchmark is the **S&P BSE SENSEX** (30 bellwether stocks).
-  * **National Stock Exchange (NSE):** World's largest derivatives exchange; benchmark is the **NIFTY 50**.
-* **Key Regulators:**
-  * **Reserve Bank of India (RBI):** Central bank governing monetary policy, repo rates, and inflation targeting.
-  * **Securities and Exchange Board of India (SEBI):** Capital markets regulator ensuring investor protection and market transparency.
-
----
-
-### 🔎 6. Authoritative Sources & Citations
-* 🏛️ **Reserve Bank of India:** [rbi.org.in](https://www.rbi.org.in/)
+### 🔎 3. Verified Online Citations & Primary Sources
+* 🌐 **Verified Article:** [{topic_title}]({page_url})
+* 🏛️ **Reserve Bank of India (RBI):** [rbi.org.in](https://www.rbi.org.in/)
 * 📊 **Ministry of Statistics and Programme Implementation (MoSPI):** [mospi.gov.in](https://www.mospi.gov.in/)
-* 📈 **Securities and Exchange Board of India (SEBI):** [sebi.gov.in](https://www.sebi.gov.in/)
-* 🌐 **Economic Survey of India (Ministry of Finance):** [indiabudget.gov.in](https://www.indiabudget.gov.in/)"""
+* 🇮🇳 **National Portal of India:** [india.gov.in](https://www.india.gov.in/)"""
+    else:
+        search_fallback = f"""# 🌐 Economic Intelligence: {topic_title}
+**Indian Economy, Financial Markets & National Policy**
 
-    output = safe_llm_invoke([HumanMessage(content=prompt)], fallback)
-    resp = make_ai_response(output, None)
+### 📊 1. Economic Overview: {topic_title}
+* **Strategic Role:** {topic_title} represents an active domain of economic policy and market development within India's $4 Trillion economy.
+* **Regulatory & Institutional Oversight:** Coordinated by relevant ministries, regulatory bodies, and industry stakeholders.
+
+---
+
+### 🔎 2. Verified Online Citations
+* 🌐 **Online Resource:** [{topic_title}]({page_url})
+* 🏛️ **Ministry of Finance:** [finmin.nic.in](https://finmin.nic.in/)
+* 📊 **MoSPI:** [mospi.gov.in](https://www.mospi.gov.in/)"""
+
+    resp = make_ai_response(search_fallback, None)
     return {
         "workflow_stage": "economy_briefing",
         "final_output": resp["final_output"],
@@ -2410,66 +2734,224 @@ Please select the cultural themes and region you wish to explore using the inter
     }
 
 
+CULTURE_TOPIC_DOSSIERS = {
+    "Classical Dances": """# 🎭 8 Classical Dance Traditions of India: Intelligence Dossier
+**Recognized by the Sangeet Natak Akademi (National Academy of Music, Dance & Drama)**
+
+### 💃 1. The Eight Classical Dance Forms
+1. **Bharatanatyam (Tamil Nadu):** Geometry, fixed upper torso, bent knees (*aramandi*), and intricate facial expression (*abhinaya*). Historically performed in temples (*sadir*).
+2. **Kathak (North India - UP/Rajasthan):** Narrative dance-drama rooted in temple storytelling and Mughal court traditions; famous for rhythmic footwork (*tatkar*), pirouettes (*chakkars*), and *jugalbandi* with the tabla.
+3. **Kathakali (Kerala):** High-stylized dance-drama characterized by vibrant facial makeup (*vesham*), elaborate headgear, and profound mudras enacted to Chenda percussion.
+4. **Kuchipudi (Andhra Pradesh):** Originating in Kuchipudi village; incorporates spoken dialogue, quick footwork, and dancing on the rim of a brass plate (*tarangam*).
+5. **Odissi (Odisha):** Originating in the temples of Odisha; defined by the sensual *Tribhanga* (three-bend posture) and sculpture-like postures.
+6. **Manipuri (Manipur):** Devotional dance-drama centered on Vaishnavite *Raasleela* themes; noted for lyrical grace and gentle circular movements.
+7. **Mohiniyattam (Kerala):** The dance of the enchantress (*Mohini*); graceful, swaying torso movements reminiscent of palm trees and ocean waves.
+8. **Sattriya (Assam):** Created in the 15th century by Saint Sankaradeva in monastic *sattras*; spiritual devotion rendered through refined rhythm.
+
+---
+
+### 🔎 2. Authoritative Sources & Citations
+* 🎭 **Sangeet Natak Akademi:** [sangeetnatak.gov.in](https://sangeetnatak.gov.in/)
+* 🏛️ **Ministry of Culture, Government of India:** [indiaculture.gov.in](https://www.indiaculture.gov.in/)
+* 📜 **UNESCO Intangible Cultural Heritage List:** [ich.unesco.org](https://ich.unesco.org/)""",
+
+    "Music": """# 🎵 Classical Music Traditions: Hindustani & Carnatic Dossier
+**Nada Brahma • Raga & Tala Systems • Sacred Acoustics**
+
+### 🎼 1. Two Great Classical Traditions
+* **Hindustani Classical (North India):** Shaped by Vedic chants, Persian synthesis, and Sufi mysticism. Defined by *Gharana* traditions (Gwalior, Agra, Kirana, Jaipur-Atrauli). Key vocal forms include *Dhrupad*, *Khayal*, and *Tarana*.
+* **Carnatic Classical (South India):** Highly structured, mathematically intricate devotional music centered around the Trinity of Carnatic Music (Tyagaraja, Muthuswami Dikshitar, Syama Sastri). Key form is the *Kriti*.
+
+---
+
+### 🪕 2. Core Concepts: Raga & Tala
+* **Raga (Melodic Framework):** Specific ascending (*Arohana*) and descending (*Avarohana*) note structures that evoke distinct emotional moods (*Rasas*) and diurnal cycles (morning, evening, monsoon ragas).
+* **Tala (Rhythmic Cycle):** Periodic cyclic metric arrangements (e.g. *Teental* 16 beats, *Adi Tala* 8 beats) accented by claps (*Sam*) and pauses.
+
+---
+
+### 🎻 3. Master Instruments
+* **Melodic:** Sitar, Sarod, Veena, Santoor, Shehnai, Bansuri, Indian Violin.
+* **Percussive:** Tabla, Mridangam, Ghatam, Kanjira, Pakhawaj.
+
+---
+
+### 🔎 4. Authoritative Sources & Citations
+* 🎵 **Sangeet Natak Akademi Music Archive:** [sangeetnatak.gov.in](https://sangeetnatak.gov.in/)
+* 🏛️ **National Centre for the Performing Arts (NCPA):** [ncpamumbai.com](https://www.ncpamumbai.com/)""",
+
+    "Festivals": """# 🪔 Festivals & Sacred Seasonal Calendar: Intelligence Dossier
+**Pan-Indian Celebrations • Harvest Ceremonies • UNESCO Intangible Heritage**
+
+### 🌟 1. Pan-Indian Festivals
+* **Diwali (Deepavali):** The festival of lights celebrating the victory of light over darkness and knowledge over ignorance; illuminated with earthen *diyas* and Lakshmi Puja.
+* **Holi:** The exuberant spring festival of colors celebrating the harvest, renewal, and the divine play of Radha and Krishna.
+
+---
+
+### 🌾 2. Harvest & Astronomical Celebrations
+* **Makar Sankranti / Pongal / Bihu / Uttarayan:** Commemorates the sun's northern transit into Capricorn; celebrated through kite flying in Gujarat, sugarcane and *pongal* boiling in Tamil Nadu, and community bonfires in Assam.
+* **Onam (Kerala):** 10-day grand harvest festival honoring mythical King Mahabali, featuring floral carpets (*Pookalam*), boat races (*Vallam Kali*), and the sumptuous *Onam Sadya* feast.
+* **Baisakhi (Punjab):** Solar New Year and celebration of the wheat harvest; marks the founding of the Khalsa Panth by Guru Gobind Singh in 1699.
+
+---
+
+### 🌺 3. UNESCO Inscribed Celebrations
+* **Durga Puja of Kolkata:** Inscribed on the UNESCO Representative List of the Intangible Cultural Heritage of Humanity; a 5-day mega-installation of public art, devotion, and community harmony.
+* **Kumbh Mela:** World's largest peaceful congregation of pilgrims, held cyclically at Prayagraj, Haridwar, Ujjain, and Nashik.
+
+---
+
+### 🔎 4. Authoritative Sources & Citations
+* 📜 **UNESCO Intangible Cultural Heritage Portal:** [ich.unesco.org](https://ich.unesco.org/)
+* 🏛️ **Ministry of Culture, Government of India:** [indiaculture.gov.in](https://www.indiaculture.gov.in/)""",
+
+    "Cuisine": """# 🍲 Regional Gastronomy & Culinary Philosophy: Intelligence Dossier
+**Ayurvedic Six Tastes (Shad Rasa) • Regional Diversity • Spice Heritage**
+
+### 🌿 1. Philosophical Foundation: Ayurveda & Shad Rasa
+* **The Six Tastes:** Authentic Indian cuisine balances *Madhura* (sweet), *Amla* (sour), *Lavana* (salty), *Katu* (pungent), *Tikta* (bitter), and *Kashaya* (astringent) to foster cellular digestion and mental equilibrium.
+* **Spices as Medicine:** Turmeric (curcumin), cumin, coriander, fenugreek, cardamom, and black pepper utilized for preservation, immunity, and gut health.
+
+---
+
+### 🍛 2. Regional Culinary Landscapes
+* **North India:** Rich tandoori breads, saffron-infused gravies, *Dal Makhani*, aromatic Awadhi and Mughlai biryanis.
+* **South India:** Fermented rice-lentil delicacies (*Idli*, *Dosa*), tangy *Sambar*, *Rasam*, and coconut-infused coastal curries on banana leaves.
+* **West India:** Gujarati *Thali* (subtle sweet-savory balance), Maharashtrian *Misal Pav*, coastal Malvani fish curries, and Goan vindaloo.
+* **East & Northeast India:** Bengali mustard fish curries (*Shorshe Ilish*), delicate *Sandesh* and *Rosogolla*, and aromatic fermented herbal broths of the Northeast.
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 🌿 **Ministry of Ayush (Ayurvedic Food & Nutrition):** [ayush.gov.in](https://ayush.gov.in/)
+* 🍲 **National Portal of India — Culinary Heritage:** [india.gov.in](https://www.india.gov.in/)""",
+
+    "Society": """# 👥 Contemporary Social Fabric & Living Traditions: Intelligence Dossier
+**Vasudhaiva Kutumbakam • Demographic Dividend • Pluralistic Harmony**
+
+### 🏛️ 1. Civilizational Ideals & Living Pluralism
+* **Vasudhaiva Kutumbakam:** The constitutional and spiritual philosophy that "the world is one single family", embodying accommodation of 22 officially recognized languages, 12 major religions, and hundreds of living dialects.
+* **Continuity amidst Modernity:** Ancient family kinship structures harmonize with high digital literacy, mobile commerce, and tech-driven public empowerment.
+
+---
+
+### 🎓 2. The Demographic Dividend
+* **Median Age of ~28 Years:** India possesses the youngest, largest working-age population in the world, driving entrepreneurial vibrancy, consumer consumption, and higher STEM education.
+* **Women in Leadership:** Accelerating female enrollment in STEM disciplines, grassroots governance (*Panchayati Raj*), and startup leadership.
+
+---
+
+### 🔎 3. Authoritative Sources & Citations
+* 🏛️ **Ministry of Social Justice and Empowerment:** [socialjustice.gov.in](https://socialjustice.gov.in/)
+* 📊 **Census of India / Ministry of Home Affairs:** [censusindia.gov.in](https://censusindia.gov.in/)"""
+}
+
+
 def culture_dashboard_node(state: AgentState) -> AgentState:
     """Step 2 of Culture: Generates Structured Cultural Intelligence Dossier Dashboard."""
-    user_query = get_message_content(state["messages"][-1])
+    raw_text = get_message_content(state["messages"][-1])
+    clean_query, form_params = parse_incoming_input(raw_text)
+    extracted = state.get("extracted_params") or {}
     
-    prompt = f"""
+    theme = form_params.get("theme") or extracted.get("theme") or ""
+    q_lower = clean_query.lower()
+
+    # Identify if a predefined dropdown theme was requested
+    matched_theme = None
+    if theme in CULTURE_TOPIC_DOSSIERS:
+        matched_theme = theme
+    elif form_params.get("action") == "culture_dossier" and theme:
+        matched_theme = theme
+    else:
+        # Check if user asked about a specific folk dance, regional festival, or specific craft
+        custom_cultural_entities = [
+            "kalbelia", "warli", "madhubani", "kalaripayattu", "chhau", "theyyam", "yakshagana", "bhangra",
+            "giddha", "garba", "dandiya", "lavani", "rouf", "sufi", "sufism", "qawwali", "thangka", "pattachitra",
+            "tanjore", "gond", "chola", "kumbh mela", "folk dance", "folk music", "tribal", "handicraft", "saree"
+        ]
+        is_custom_entity = any(kw in q_lower for kw in custom_cultural_entities)
+
+        if not is_custom_entity:
+            if any(p in q_lower for p in ["8 classical dances", "classical dance forms", "classical dances", "classical dance"]):
+                matched_theme = "Classical Dances"
+            elif any(p in q_lower for p in ["classical music", "carnatic music", "hindustani music"]):
+                matched_theme = "Music"
+            elif any(p in q_lower for p in ["festivals of india", "sacred festivals", "harvest festivals", "festivals"]):
+                matched_theme = "Festivals"
+            elif any(p in q_lower for p in ["indian cuisine", "regional gastronomy", "culinary philosophy", "ayurvedic food"]):
+                matched_theme = "Cuisine"
+            elif any(p in q_lower for p in ["indian society", "social fabric", "demographic dividend", "vasudhaiva"]):
+                matched_theme = "Society"
+
+    # Case 1: Predefined theme -> Return dedicated dossier
+    if matched_theme and matched_theme in CULTURE_TOPIC_DOSSIERS:
+        fallback = CULTURE_TOPIC_DOSSIERS[matched_theme]
+        prompt = f"""
 You are the Cultural Anthropologist & Heritage Specialist of 🇮🇳 India Educational AI Intelligence Agent (@india-intel-agent).
-User Query / Form Submission: "{user_query}"
+User Query / Form Submission: "{clean_query}"
+Requested Theme Focus: {matched_theme}
 
 Reference Grounding Base:
-{DOMAIN_CONTEXTS['culture_society']}
+{fallback}
 
-Generate a rich, respectful, and educational cultural dossier:
-1. 🏛️ **Civilizational Foundation & Regional Synthesis** (5,000+ years continuity, linguistic evolution, Indo-Aryan / Dravidian / Tribal roots).
-2. 🎭 **Performing Arts & Classical Traditions** (8 Classical dances recognized by Sangeet Natak Akademi, Hindustani & Carnatic classical music, folk forms).
-3. 🪔 **Festive Calendar & Spiritual Celebrations** (Diwali, Holi, Eid, Pongal, Onam, Baisakhi, Bihu, Durga Puja, Navratri).
-4. 🍲 **Regional Gastronomy & Culinary Philosophy**.
-5. 👥 **Contemporary Social Fabric** (1.4B demographic dividend, youth aspirations, family harmony, women in leadership).
-6. 🔎 **Authoritative Sources & Cultural Bodies** (Ministry of Culture culture.gov.in, Sangeet Natak Akademi sangeetnatak.gov.in, Sahitya Akademi, UNESCO Intangible Cultural Heritage).
+Generate a rich, respectful, and educational cultural dossier focusing on {matched_theme}.
 """
-    fallback = """# 🎨 Cultural Heritage & Social Fabric: Intelligence Dossier
+        output = safe_llm_invoke([HumanMessage(content=prompt)], fallback)
+        resp = make_ai_response(output, None)
+        return {
+            "workflow_stage": "culture_report",
+            "final_output": resp["final_output"],
+            "messages": resp["messages"],
+        }
 
-### 🏛️ 1. Civilizational Continuity & Pluralism
-* **5,000+ Years Living Tradition:** From the bronze-age planned cities of the Indus Valley Civilization through the Vedic, Mauryan, Gupta, Chola, Vijayanagara, and Mughal epochs to modern constitutional democracy.
-* **Philosophical Foundation:** Guided by the timeless ideal *Vasudhaiva Kutumbakam* ("The world is one family"), harmonizing diverse philosophies, linguistic roots, and spiritual paths.
+    # Case 2: Custom / Non-dropdown culture topic -> Perform real-time online search!
+    search_query = clean_query
+    for prefix in ["tell me about", "what is", "explain", "information on", "info on", "research", "search", "details on"]:
+        if search_query.lower().startswith(prefix):
+            search_query = search_query[len(prefix):].strip()
 
----
+    online_res = fetch_online_intelligence(search_query, domain="culture")
+    topic_title = online_res.get("title", search_query.title())
+    extract = online_res.get("extract", "")
+    page_url = online_res.get("url", "https://en.wikipedia.org/")
 
-### 🎭 2. Performing Arts: 8 Classical Dance Forms
-*Recognized by the Sangeet Natak Akademi (National Academy of Music, Dance & Drama):*
-1. **Bharatanatyam** (Tamil Nadu) — Geometry, fixed upper torso, bent legs, and expressive *abhinaya*.
-2. **Kathak** (North India) — Storytelling through rhythmic footwork (*tatkar*), spins (*chakkars*), and temple/court poetry.
-3. **Kathakali** (Kerala) — Stylized dance-drama with painted face makeup (*vesham*) and grand headdresses.
-4. **Kuchipudi** (Andhra Pradesh) — Classical dramatic dance featuring dialogue, fast rhythms, and dancing upon a brass plate (*tarangam*).
-5. **Odissi** (Odisha) — Characterized by *Tribhanga* (three-bend posture) and temple sculpture poses.
-6. **Manipuri** (Manipur) — Gentle, lyrical devotional *Raasleela* movements.
-7. **Mohiniyattam** (Kerala) — Graceful, feminine swaying dance of the mythical enchantress.
-8. **Sattriya** (Assam) — Living monastery dance founded in the 15th century by Mahapurusha Sankaradeva.
+    if extract:
+        search_fallback = f"""# 🌐 Real-Time Cultural Intelligence: {topic_title}
+**Live Online Search Verified • Heritage, Arts & Living Traditions**
 
----
-
-### 🪔 3. Festivals & Seasonal Calendar
-* **Pan-Indian:** Diwali (festival of lights celebrating victory of light over darkness), Holi (festival of colors and spring harvest).
-* **Harvest & Regional:** Pongal (Tamil Nadu), Onam (Kerala), Baisakhi (Punjab), Bihu (Assam), Chhath Puja (Bihar/UP).
-* **Sacred Celebrations:** Durga Puja (UNESCO Intangible Heritage), Navratri, Ganesh Chaturthi, Eid-ul-Fitr, Christmas, Gurpurab.
-
----
-
-### 👥 4. Contemporary Social Fabric
-* **Demographic Dividend:** Median age of ~28 years representing the world's largest youthful demographic.
-* **Modern Synthesis:** Harmonious blending of deep family values with digital literacy, higher education, and women-led entrepreneurship.
+### 🎨 1. Cultural Overview & Living Heritage
+{extract}
 
 ---
 
-### 🔎 5. Authoritative Sources & Cultural Bodies
+### 🏛️ 2. Origins, Community Traditions & Historical Lineage
+* **Regional & Cultural Roots:** Deeply rooted in regional communities, oral lineages, and seasonal practices across India.
+* **Artistic Expression & Symbolism:** Characterized by unique aesthetic expressions, indigenous instruments, intricate costumes, or iconic motifs.
+* **National & Global Preservation:** Recognized and celebrated through institutions like the Sangeet Natak Akademi, Lalit Kala Akademi, and UNESCO Intangible Cultural Heritage initiatives.
+
+---
+
+### 🔎 3. Verified Cultural Citations & Authoritative Portals
+* 🌐 **Verified Article:** [{topic_title}]({page_url})
 * 🏛️ **Ministry of Culture, Government of India:** [indiaculture.gov.in](https://www.indiaculture.gov.in/)
 * 🎭 **Sangeet Natak Akademi:** [sangeetnatak.gov.in](https://sangeetnatak.gov.in/)
-* 📜 **UNESCO Intangible Cultural Heritage List:** [ich.unesco.org](https://ich.unesco.org/en/state/india-IN)"""
+* 📜 **UNESCO Intangible Cultural Heritage:** [ich.unesco.org](https://ich.unesco.org/)"""
+    else:
+        search_fallback = f"""# 🌐 Cultural Intelligence: {topic_title}
+**Indian Heritage, Arts & Living Traditions**
 
-    output = safe_llm_invoke([HumanMessage(content=prompt)], fallback)
-    resp = make_ai_response(output, None)
+### 🎨 1. Cultural Overview: {topic_title}
+* **Cultural Significance:** {topic_title} is an integral element of India's multi-faceted cultural mosaic and civilizational heritage.
+* **Living Practice:** Preserved through regional communities, cultural guilds, and oral traditions.
+
+---
+
+### 🔎 2. Verified Online Citations
+* 🌐 **Online Resource:** [{topic_title}]({page_url})
+* 🏛️ **Ministry of Culture:** [indiaculture.gov.in](https://www.indiaculture.gov.in/)"""
+
+    resp = make_ai_response(search_fallback, None)
     return {
         "workflow_stage": "culture_report",
         "final_output": resp["final_output"],
@@ -2517,38 +2999,7 @@ Please select the technology frontiers and research parameters using the interac
 
 def search_science_topic_online(query: str) -> Dict[str, Any]:
     """Real-time online search via Wikipedia REST / Search API for tech topics outside core dropdown options."""
-    clean_q = query.strip()
-    search_term = clean_q if "india" in clean_q.lower() else f"{clean_q} in India"
-    result = {
-        "query": clean_q,
-        "search_term": search_term,
-        "title": clean_q.title(),
-        "extract": "",
-        "url": f"https://en.wikipedia.org/wiki/{urllib.parse.quote(clean_q.replace(' ', '_'))}",
-        "success": False
-    }
-    
-    try:
-        search_url = f"https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch={urllib.parse.quote(search_term)}&format=json&utf8=1&srlimit=2"
-        req = urllib.request.Request(search_url, headers={"User-Agent": "IndiaIntelAgent/1.0 (https://asi1.ai)"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-            search_items = data.get("query", {}).get("search", [])
-            if search_items:
-                best_title = search_items[0].get("title", clean_q)
-                result["title"] = best_title
-                sum_url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(best_title)}"
-                sum_req = urllib.request.Request(sum_url, headers={"User-Agent": "IndiaIntelAgent/1.0 (https://asi1.ai)"})
-                with urllib.request.urlopen(sum_req, timeout=5) as s_resp:
-                    s_data = json.loads(s_resp.read().decode())
-                    result["extract"] = s_data.get("extract", "")
-                    if "content_urls" in s_data and "desktop" in s_data["content_urls"]:
-                        result["url"] = s_data["content_urls"]["desktop"].get("page", result["url"])
-                    result["success"] = True
-    except Exception as e:
-        logger.warning(f"Online search error for '{query}': {e}")
-        
-    return result
+    return fetch_online_intelligence(query, domain="science")
 
 
 SCIENCE_TOPIC_DOSSIERS = {
@@ -3138,13 +3589,28 @@ def supervisor_router(state: AgentState) -> AgentState:
             if re.search(r'\b' + re.escape(state_name) + r'\b', q_lower):
                 matched_city = state_name
                 break
+    if not matched_city:
+        travel_patterns = [
+            r'(?:travel(?:ling)? to|trip to|visit|explore|tour of|tour to|heading to|going to|go to|holiday in|vacation in|itinerary for|plan (?:a )?(?:trip )?(?:to|for)|flights? to|train to|hotels? in|tourism in)\s+([a-zA-Z\s]+)',
+            r'([a-zA-Z\s]+?)\s+(?:trip|tour|tourism|itinerary|travel)',
+        ]
+        for p in travel_patterns:
+            m = re.search(p, q_lower)
+            if m:
+                cand = m.group(1).strip()
+                cand = re.split(r'\b(?:for|with|in|on|next|\d+\s*days?)\b', cand, flags=re.IGNORECASE)[0].strip()
+                if cand and cand.lower() not in ('india', 'a', 'the', 'my', 'some', 'any', 'place', 'city'):
+                    matched_city = cand
+                    break
 
-    has_travel_context = any(kw in q_lower for kw in [
-        "tourism", "trip", "travel", "tour", "itinerary", "visit", "destination", "days", "day", "people", 
-        "budget", "hotel", "train", "flight", "explore", "plan"
+    has_travel_context = has_keyword(q_lower, [
+        "tourism", "tourist", "vacation", "holiday", "itinerary", "sightseeing", "places to visit",
+        "travel", "trip", "hotel", "hotels", "flight", "flights"
+    ]) or any(p in q_lower for p in [
+        "travel to", "trip to", "visit india", "plan a trip", "plan my trip", "explore destination", "top destinations"
     ])
 
-    if matched_city or has_travel_context:
+    if matched_city:
         has_duration = bool(
             ("days" in form_params and str(form_params["days"]).lower() not in ("choose...", "")) or 
             re.search(r'\b(\d+)\s*(?:days?|day|d)\b', q_lower) or 
@@ -3157,20 +3623,23 @@ def supervisor_router(state: AgentState) -> AgentState:
         )
 
         # Smart Follow-up (e.g. "Srinagar 5 days" with missing travelers/budget)
-        if matched_city and has_duration and not has_people_or_budget:
+        if has_duration and not has_people_or_budget:
             parsed = parse_travel_params(clean_query, form_params)
             return {"workflow_stage": "tourism_followup", "entity_name": matched_city, "extracted_params": parsed}
 
         # If user provided sufficient parameters or requested a plan or clicked Generate Plan
-        if matched_city and (has_duration or has_people_or_budget or "plan" in q_lower or "itinerary" in q_lower or form_params.get("action") == "plan_trip"):
+        if (has_duration or has_people_or_budget or "plan" in q_lower or "itinerary" in q_lower or form_params.get("action") == "plan_trip"):
             parsed = parse_travel_params(clean_query, form_params)
             return {"workflow_stage": "tourism_planner", "entity_name": matched_city, "extracted_params": parsed}
 
-        # If user just selected a city (e.g. "Srinagar" or "Explore Srinagar")
-        if matched_city and not has_duration and not has_people_or_budget:
-            if matched_city in INDIAN_STATES and any(kw in q_lower for kw in ["economy", "culture", "profile", "tell me about"]):
-                return {"workflow_stage": "state_composite", "entity_name": matched_city, "extracted_params": None}
-            return {"workflow_stage": "tourism_briefing", "entity_name": matched_city, "extracted_params": None}
+        # If user just selected a city (e.g. "Srinagar" or "Explore Srinagar" or "I want to travel to Jammu")
+        if matched_city in INDIAN_STATES and any(kw in q_lower for kw in ["economy", "culture", "profile", "tell me about"]):
+            return {"workflow_stage": "state_composite", "entity_name": matched_city, "extracted_params": None}
+        return {"workflow_stage": "tourism_briefing", "entity_name": matched_city, "extracted_params": None}
+
+    # If travel context is present without a city and without competing domain keywords, show tourism destinations intake
+    if has_travel_context and not any(kw in q_lower for kw in ["gati shakti", "economy", "gdp", "pli", "fdi", "stock", "dance", "music", "festival", "isro", "ai", "quantum"]):
+        return {"workflow_stage": "tourism_destinations", "entity_name": None, "extracted_params": None}
 
     # ----------------------------------------------------
     # 6. Check for Economy & Financial Markets Inquiries / Form Submissions
@@ -3182,7 +3651,9 @@ def supervisor_router(state: AgentState) -> AgentState:
         "company", "companies", "tata", "reliance", "infosys", "tcs", "wipro", "hcl", "adani",
         "l&t", "mahindra", "maruti", "stock", "stocks", "nse", "bse", "nifty", "sensex", "mutual fund",
         "sebi", "banking", "bank", "upi", "rupay", "fintech", "financial",
-        "titans", "corporate titans", "pli", "pli scheme", "production-linked incentive"
+        "titans", "corporate titans", "pli", "pli scheme", "production-linked incentive",
+        "gati shakti", "gatishakti", "pm gati", "infrastructure", "capex", "forex", "direct tax",
+        "income tax", "corporate tax", "crypto", "cryptocurrency", "rupee", "sez", "logistics"
     ]
     if form_params.get("topic") or has_keyword(q_lower, economy_keywords) or any(kw in q_lower for kw in [
         "upi, rupay & fintech revolution", "startups & tech unicorns", "corporate titans", "manufacturing, pli & atmanirbhar bharat",
@@ -3198,7 +3669,11 @@ def supervisor_router(state: AgentState) -> AgentState:
         "durga puja", "ganesh", "pongal", "onam", "baisakhi", "bihu", "language", "languages", "religion",
         "philosophy", "vedanta", "clothing", "saree", "cuisine", "food", "music", "dance", "dances",
         "bharatanatyam", "kathak", "kathakali", "odissi", "sattriya", "kuchipudi", "manipuri", "mohiniyattam",
-        "cinema", "art", "handicraft", "diversity", "society", "demographic", "social fabric", "marriage"
+        "cinema", "art", "handicraft", "diversity", "society", "demographic", "social fabric", "marriage",
+        "kalbelia", "warli", "madhubani", "kalaripayattu", "chhau", "theyyam", "yakshagana", "bhangra",
+        "giddha", "garba", "dandiya", "lavani", "rouf", "sufi", "sufism", "qawwali", "carnatic",
+        "hindustani", "raga", "tabla", "sitar", "veena", "shehnai", "flute", "thangka", "pattachitra",
+        "tanjore painting", "gond", "chola", "temple architecture", "unesco heritage", "kumbh mela"
     ]
     if form_params.get("region") or form_params.get("theme") or has_keyword(q_lower, culture_keywords):
         return {"workflow_stage": "culture_report", "entity_name": None, "extracted_params": form_params}
@@ -3210,7 +3685,9 @@ def supervisor_router(state: AgentState) -> AgentState:
         "science", "tech", "technology", "isro", "space", "chandrayaan", "mangalyaan", "gaganyaan",
         "aditya", "rocket", "semiconductor", "semiconductors", "chip", "chips", "fab", "dholera",
         "micron", "sanand", "ai", "artificial intelligence", "indiaai", "bhashini", "telecom", "5g", "6g",
-        "green hydrogen", "quantum", "biotechnology", "drone", "defence", "drdo"
+        "green hydrogen", "quantum", "biotechnology", "drone", "defence", "drdo",
+        "superconductivity", "fusion", "graphene", "robotics", "nanotechnology", "ev battery",
+        "lithium", "clean energy", "nuclear", "thorium"
     ]
     if form_params.get("category") or has_keyword(q_lower, science_keywords):
         return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": form_params}

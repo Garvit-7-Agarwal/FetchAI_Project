@@ -36,6 +36,8 @@ INTERACTIVE_TESTS = [
     ("Option 4: Science Selection", "4"),
     
     # Tourism Workflows
+    ("Tourism Custom Destination: Jammu Inquiry", "I WANT TO TRAVEL TO JAMMU"),
+    ("Tourism Custom Destination Plan: Jammu", "Tourism → Jammu → 3 days → 2 people → Budget"),
     ("Destination Intelligence Selection", "Explore Jaipur"),
     ("Smart Follow-Up Missing Info", "Jaipur 5 days"),
     ("Foreign Scope Guardrail", "one day trip at thailand"),
@@ -44,9 +46,11 @@ INTERACTIVE_TESTS = [
     ("Top Destinations Carousel", "show top destinations carousel"),
     ("Review Card Confirmation CTA", '{"action": "confirm_trip", "destination": "Jaipur", "days": "3", "travelers": "2", "budget": "Budget"}'),
     
-    # Economy & Culture Dossiers
+    # Economy & Culture Dossiers (Dropdowns & Custom Online Search)
     ("Domain Form: Economy FinTech Dossier", '{"topic": "FinTech", "period": "Current", "analysis_type": "Detailed", "action": "economy_dossier", "approved": true}'),
+    ("Economy Custom Topic: PM Gati Shakti", "Explain PM Gati Shakti master plan"),
     ("Domain Form: Culture Heritage Dossier", '{"region": "North India", "theme": "Festivals", "depth": "Detailed", "action": "culture_dossier", "approved": true}'),
+    ("Culture Custom Topic: Kalbelia Folk Dance", "Tell me about Kalbelia folk dance"),
     
     # Science & Future Tech: Dedicated Dropdown Categories
     ("Science Dropdown: Quantum Computing", '{"category": "Quantum", "organization": "India Overall", "focus": "Future Outlook", "action": "science_dossier", "approved": true}'),
