@@ -25,12 +25,20 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from uagents_core.contrib.protocols.chat import MetadataContent
 from uagents_core.contrib.protocols.chat.cards import (
+    CarouselCardPayload,
+    CarouselItem,
     CtaAction,
+    DetailCardPayload,
     FormCardPayload,
     FormField,
     FormFieldOption,
+    ReviewCardPayload,
+    ReviewSummaryRow,
     create_card_content,
 )
+import payment
+import services
+import transit_agent
 
 load_dotenv()
 
@@ -42,6 +50,8 @@ llm = ChatGoogleGenerativeAI(
     model=model_name,
     google_api_key=os.getenv("GOOGLE_API_KEY"),
     temperature=0.2,
+    max_retries=1,
+    timeout=10.0,
 )
 
 def safe_llm_invoke(messages: List[BaseMessage], fallback_content: str = "") -> str:
@@ -75,7 +85,12 @@ class AgentState(TypedDict):
         "science_dossier",
         "state_composite",
         "out_of_scope",
-        "general_overview"
+        "general_overview",
+        "currency_converter",
+        "payment_checkout",
+        "transit_specialist",
+        "destinations_carousel",
+        "review_confirm",
     ] | None
     entity_name: str | None
     extracted_params: Dict[str, Any] | None
@@ -139,12 +154,12 @@ def make_ai_response(text: str, card_payload: Optional[Any] = None) -> Dict[str,
     """
     Constructs an agent turn output containing:
     1) TextContent: Full, richly formatted Markdown displayed across all chat clients.
-    2) MetadataContent: Native Agentverse / ASI:One Interactive Card Payload rendering dropdowns/forms.
+    2) MetadataContent: Native Agentverse / ASI:One Interactive Card Payload rendering dropdowns/forms/reviews/carousels.
     """
     if card_payload is not None:
         if hasattr(card_payload, "metadata"):
             meta = card_payload.metadata
-        elif isinstance(card_payload, FormCardPayload):
+        elif isinstance(card_payload, (FormCardPayload, ReviewCardPayload, CarouselCardPayload, DetailCardPayload)) or hasattr(card_payload, "model_dump"):
             meta = create_card_content(card_payload).metadata
         elif isinstance(card_payload, dict):
             meta = card_payload
@@ -168,7 +183,7 @@ def make_ai_response(text: str, card_payload: Optional[Any] = None) -> Dict[str,
 
 
 # ----------------------------------------------------
-# 3. Interactive Card Payloads (ASI:One Native Dropdowns & Forms)
+# 3. Interactive Card Payloads (ASI:One Native Dropdowns, Reviews & Forms)
 # ----------------------------------------------------
 def get_landing_card_payload() -> MetadataContent:
     """Interactive card for the landing view with domain selection dropdown."""
@@ -185,6 +200,8 @@ def get_landing_card_payload() -> MetadataContent:
                     FormFieldOption(label="🇮🇳 Option 1: Economy & Financial Markets", value="Economy"),
                     FormFieldOption(label="🎨 Option 3: Culture & Social Fabric", value="Culture"),
                     FormFieldOption(label="🚀 Option 4: Science & Future Tech", value="Science"),
+                    FormFieldOption(label="💱 Option 5: Live Forex & Currency Converter", value="Currency"),
+                    FormFieldOption(label="👑 Option 6: VIP Pass & Payment Protocol", value="Payment"),
                 ]
             )
         ],
@@ -193,6 +210,143 @@ def get_landing_card_payload() -> MetadataContent:
             selection={"action": "select_domain"},
             primary=True
         )
+    )
+    return create_card_content(payload)
+
+
+def get_review_card_payload(params: Dict[str, Any]) -> MetadataContent:
+    """Renders a native Review & Confirmation Card directly inside ASI:One."""
+    city = str(params.get("destination", "Jaipur")).title()
+    days = str(params.get("days", "3"))
+    travelers = str(params.get("travelers", "2"))
+    budget = str(params.get("budget", "Budget"))
+    transport = str(params.get("transport", "Train"))
+
+    rows = [
+        ReviewSummaryRow(label="📍 Destination", value=city),
+        ReviewSummaryRow(label="📅 Trip Duration", value=f"{days} Days"),
+        ReviewSummaryRow(label="👥 Travelers", value=f"{travelers} Persons"),
+        ReviewSummaryRow(label="💰 Budget Tier", value=budget),
+        ReviewSummaryRow(label="🚆 Transit Mode", value=transport),
+    ]
+
+    payload = ReviewCardPayload(
+        title=f"📋 Itinerary Review: {city}",
+        summary_rows=rows,
+        approve_cta=CtaAction(
+            label="🚀 Confirm & Generate Full Itinerary",
+            selection={"action": "confirm_trip", "destination": city, "days": days, "travelers": travelers, "budget": budget, "transport": transport},
+            primary=True,
+        ),
+        reject_cta=CtaAction(
+            label="🎛️ Adjust Travel Preferences",
+            selection={"action": "modify_trip", "destination": city},
+        ),
+    )
+    return create_card_content(payload)
+
+
+def get_currency_card_payload() -> MetadataContent:
+    """Renders an interactive Foreign Exchange conversion card."""
+    payload = FormCardPayload(
+        title="💱 Real-Time Foreign Exchange (Forex) Converter",
+        fields=[
+            FormField(
+                name="amount",
+                kind="number",
+                label="Amount to Convert",
+                required=True,
+                placeholder="100",
+            ),
+            FormField(
+                name="currency",
+                kind="select",
+                label="Base Currency",
+                required=True,
+                options=[
+                    FormFieldOption(label="🇺🇸 US Dollar (USD)", value="USD"),
+                    FormFieldOption(label="🇪🇺 Euro (EUR)", value="EUR"),
+                    FormFieldOption(label="🇬🇧 British Pound (GBP)", value="GBP"),
+                    FormFieldOption(label="🇦🇪 UAE Dirham (AED)", value="AED"),
+                    FormFieldOption(label="🇨🇦 Canadian Dollar (CAD)", value="CAD"),
+                    FormFieldOption(label="🇦🇺 Australian Dollar (AUD)", value="AUD"),
+                    FormFieldOption(label="🇯🇵 Japanese Yen (JPY)", value="JPY"),
+                    FormFieldOption(label="🇸🇬 Singapore Dollar (SGD)", value="SGD"),
+                ],
+            ),
+        ],
+        submit_cta=CtaAction(
+            label="💱 Calculate Live INR Budget",
+            selection={"action": "convert_forex"},
+            primary=True,
+        ),
+    )
+    return create_card_content(payload)
+
+
+def get_destinations_carousel_payload() -> MetadataContent:
+    """Renders an interactive swipeable carousel of top flagship Indian destinations."""
+    items = [
+        CarouselItem(
+            id="dest-jaipur",
+            title="🏰 Jaipur (Pink City)",
+            subtitle="Amber Fort & Royal Palaces",
+            primary_cta=CtaAction(
+                label="Explore Jaipur",
+                selection={"action": "explore_city", "destination": "Jaipur"},
+            ),
+        ),
+        CarouselItem(
+            id="dest-srinagar",
+            title="🏔️ Srinagar (Paradise on Earth)",
+            subtitle="Dal Lake Shikara & Gulmarg",
+            primary_cta=CtaAction(
+                label="Explore Srinagar",
+                selection={"action": "explore_city", "destination": "Srinagar"},
+            ),
+        ),
+        CarouselItem(
+            id="dest-varanasi",
+            title="🪔 Varanasi (Eternal City)",
+            subtitle="Ganga Aarti & Ghats",
+            primary_cta=CtaAction(
+                label="Explore Varanasi",
+                selection={"action": "explore_city", "destination": "Varanasi"},
+            ),
+        ),
+        CarouselItem(
+            id="dest-agra",
+            title="🏛️ Agra (City of Taj)",
+            subtitle="Taj Mahal & Agra Fort",
+            primary_cta=CtaAction(
+                label="Explore Agra",
+                selection={"action": "explore_city", "destination": "Agra"},
+            ),
+        ),
+        CarouselItem(
+            id="dest-goa",
+            title="🏖️ Goa (Coastal Haven)",
+            subtitle="Beaches & Portuguese Churches",
+            primary_cta=CtaAction(
+                label="Explore Goa",
+                selection={"action": "explore_city", "destination": "Goa"},
+            ),
+        ),
+        CarouselItem(
+            id="dest-kochi",
+            title="🌴 Kochi (Kerala Backwaters)",
+            subtitle="Fort Kochi & Houseboats",
+            primary_cta=CtaAction(
+                label="Explore Kochi",
+                selection={"action": "explore_city", "destination": "Kochi"},
+            ),
+        ),
+    ]
+
+    payload = CarouselCardPayload(
+        title="🌟 Top Flagship Indian Destinations",
+        subtitle="Swipe to choose an Indian heritage circuit",
+        items=items,
     )
     return create_card_content(payload)
 
@@ -2021,6 +2175,37 @@ Generate an executable, highly engaging day-by-day travel dashboard:
 * **07:00 PM:** Authentic cultural dining experience."""
         itinerary_md = safe_llm_invoke([HumanMessage(content=prompt)], dynamic_fallback)
 
+    # Real-Time Weather Integration
+    live_weather = services.fetch_live_weather(city_name)
+    weather_section = f"""### 🌤️ Real-Time Weather & Live Environmental Advisory ({city_name})
+* **Current Weather:** {live_weather['icon']} **{live_weather['temperature_c']}°C**, {live_weather['condition']}
+* **Atmospheric Conditions:** 💧 **{live_weather['humidity_pct']}%** Humidity | 💨 **{live_weather['wind_kmh']} km/h** Wind
+* **Seasonal Advisory:** {live_weather['advisory']}"""
+
+    # Real-Time Foreign Currency Conversions
+    fx_rates = services.fetch_live_forex_rates()
+    inr_usd = fx_rates.get("INR", 86.85)
+    usd_val = round(total_est / inr_usd, 2)
+    eur_val = round((total_est / inr_usd) * fx_rates.get("EUR", 0.92), 2)
+    gbp_val = round((total_est / inr_usd) * fx_rates.get("GBP", 0.77), 2)
+    aed_val = round((total_est / inr_usd) * fx_rates.get("AED", 3.67), 2)
+
+    forex_section = f"""### 💱 Real-Time Foreign Currency Budget Estimates
+* 🇺🇸 **US Dollar (USD):** ~**${usd_val:,.2f} USD** *(Live Rate: 1 USD = ₹{inr_usd:.2f} INR)*
+* 🇪🇺 **Euro (EUR):** ~**€{eur_val:,.2f} EUR**
+* 🇬🇧 **British Pound (GBP):** ~**£{gbp_val:,.2f} GBP**
+* 🇦🇪 **UAE Dirham (AED):** ~**{aed_val:,.2f} AED**"""
+
+    # Multi-Agent Transit Specialist Handoff
+    transit_info = transit_agent.resolve_transit_itinerary("Delhi", city_name, transport)
+    top_transit = transit_info.options[0] if transit_info.options else None
+    transit_extra = ""
+    if top_transit:
+        transit_extra = f"""* 🚆 **Transit Specialist Recommendation:** **{top_transit.service_name}** (#{top_transit.service_number})  
+  🕒 **Schedule:** {top_transit.departure_time} ➔ {top_transit.arrival_time} ({top_transit.duration})  
+  📏 **Rail Distance:** {top_transit.distance_km} km | 💰 **Fare:** {top_transit.fare_estimate}  
+  👉 **[ 🔗 Direct Train Search on IRCTC Portal ]({top_transit.booking_url})**\n"""
+
     output = f"""# 🇮🇳 {city_name} Trip Plan — Intelligence Dashboard
 
 ### 📋 Trip Summary Card
@@ -2032,13 +2217,17 @@ Generate an executable, highly engaging day-by-day travel dashboard:
 
 ---
 
+{weather_section}
+
+---
+
 {itinerary_md}
 
 ---
 
 ## 🚆 Transportation Intelligence & Direct Booking Links
 
-* 🚆 **High-Speed Rail:** {city_data.get('train_route', f'Regular Superfast Express trains connect to {city_name} Junction.') if city_data else f'Regular Superfast Express trains connect to {city_name} Junction.'}  
+{transit_extra}* 🚆 **High-Speed Rail:** {city_data.get('train_route', f'Regular Superfast Express trains connect to {city_name} Junction.') if city_data else f'Regular Superfast Express trains connect to {city_name} Junction.'}  
   👉 **[ 🔗 Search / Book Trains on Official IRCTC Portal ]({irctc_link})**
 
 * ✈️ **Flight Routes:** {city_data.get('flight_route', f'Nearest commercial airport connects {city_name} with major metros.') if city_data else f'Nearest commercial airport connects {city_name} with major metros.'}  
@@ -2073,11 +2262,21 @@ Generate an executable, highly engaging day-by-day travel dashboard:
 
 ---
 
+{forex_section}
+
+---
+
 ## 🔎 Sources & Authoritative References
 * 🏛️ **Monument Authority:** [{ticket_portal_name}]({ticket_link})
 * 🚆 **Indian Railway Catering and Tourism Corporation:** [irctc.co.in]({irctc_link})
 * 🗺️ **Official State Tourism Portal:** Incredible India ([incredibleindia.gov.in](https://www.incredibleindia.gov.in/))
 * 📜 **UNESCO World Heritage Centre:** [whc.unesco.org](https://whc.unesco.org/en/statesparties/in)
+
+---
+
+### 👑 Verified VIP All-India Expedited Travel Pass
+Unlock priority 24/7 IRCTC Tatkal assistance, DigiYatra fast-track guidelines, Tourist Police 1363 hotline, and an official cryptographically signed pass on Fetch.ai ledger for **1.0 ASI / FET**.  
+👉 **[ 💳 Unlock VIP Pass (1.0 ASI) ]** *(Reply `VIP Pass` or `Pay`)*
 
 ---
 
@@ -2103,7 +2302,14 @@ Generate an executable, highly engaging day-by-day travel dashboard:
   👉 **[ 🔗 Click to Save {city_name} Itinerary to Google Calendar ]({cal_link})**  
   *One-click calendar integration with all activity schedules and reminders.*"""
 
-    resp = make_ai_response(output, None)
+    review_card = get_review_card_payload({
+        "destination": city_name,
+        "days": days,
+        "travelers": travelers,
+        "budget": budget,
+        "transport": transport,
+    })
+    resp = make_ai_response(output, review_card)
     return {
         "workflow_stage": "tourism_planner",
         "final_output": resp["final_output"],
@@ -2550,6 +2756,212 @@ I am an autonomous intelligence agent dedicated exclusively to the **Republic of
     }
 
 
+def currency_converter_node(state: AgentState) -> AgentState:
+    """Real-Time Foreign Exchange (Forex) Converter Node."""
+    user_query = get_message_content(state["messages"][-1])
+    clean_query, form_params = parse_incoming_input(user_query)
+
+    # Extract amount and currency from query or form
+    amount = 100.0
+    from_curr = "USD"
+
+    if "amount" in form_params:
+        try:
+            amount = float(form_params["amount"])
+        except Exception:
+            amount = 100.0
+    else:
+        amt_match = re.search(r'(\d+(?:\.\d+)?)', clean_query)
+        if amt_match:
+            try:
+                amount = float(amt_match.group(1))
+            except Exception:
+                pass
+
+    if "currency" in form_params:
+        from_curr = str(form_params["currency"]).upper()
+    else:
+        for c in ["EUR", "GBP", "AED", "JPY", "CAD", "AUD", "SGD", "USD"]:
+            if c.lower() in clean_query.lower():
+                from_curr = c
+                break
+
+    conv = services.convert_currency_to_inr(amount, from_curr)
+    inr_amt = conv["amount_inr"]
+    rate = conv["exchange_rate"]
+    power_bullets = "\n".join(f"* {p}" for p in conv["purchasing_power"])
+
+    rates = services.fetch_live_forex_rates()
+    inr_usd = rates.get("INR", 86.85)
+
+    output = f"""# 💱 Real-Time Foreign Exchange & Currency Intelligence
+**Live Interbank Forex Feed • India Economic Intelligence**
+
+### 📊 Conversion Result: {amount} {from_curr} ➔ INR
+* **Exchange Rate:** **1 {from_curr} = ₹{rate} INR**
+* **Converted Total:** **₹{inr_amt:,.2f} INR** *(Indian Rupees)*
+
+---
+
+### 🛒 Local Purchasing Power in India (What ₹{inr_amt:,.0f} buys):
+{power_bullets}
+
+---
+
+### 📈 Major Global Currencies Benchmark against INR (₹):
+| Foreign Currency | Code | Current Live Exchange Rate |
+| :--- | :--- | :--- |
+| **US Dollar** | `USD` | **1 USD = ₹{inr_usd:.2f} INR** |
+| **Euro** | `EUR` | **1 EUR = ₹{round(inr_usd * (1.0 / rates.get('EUR', 0.92)), 2):.2f} INR** |
+| **British Pound** | `GBP` | **1 GBP = ₹{round(inr_usd * (1.0 / rates.get('GBP', 0.77)), 2):.2f} INR** |
+| **UAE Dirham** | `AED` | **1 AED = ₹{round(inr_usd / 3.6725, 2):.2f} INR** |
+| **Canadian Dollar** | `CAD` | **1 CAD = ₹{round(inr_usd * (1.0 / rates.get('CAD', 1.38)), 2):.2f} INR** |
+| **Australian Dollar** | `AUD` | **1 AUD = ₹{round(inr_usd * (1.0 / rates.get('AUD', 1.52)), 2):.2f} INR** |
+
+*💡 Tip: Use the interactive converter dropdown below to convert any other amount or currency directly inside ASI:One.*"""
+
+    resp = make_ai_response(output, get_currency_card_payload())
+    return {
+        "workflow_stage": "currency_converter",
+        "final_output": resp["final_output"],
+        "messages": resp["messages"],
+    }
+
+
+def payment_checkout_node(state: AgentState) -> AgentState:
+    """Fetch.ai Payment Protocol Node: Gates and issues cryptographically signed VIP passes and dossiers."""
+    user_query = get_message_content(state["messages"][-1])
+    clean_query, form_params = parse_incoming_input(user_query)
+
+    is_complete_action = (
+        form_params.get("action") == "complete_payment"
+        or "confirm payment" in clean_query.lower()
+        or "verify payment" in clean_query.lower()
+        or "tx_hash" in form_params
+        or any(w in clean_query.lower() for w in ["paid", "complete payment", "0x", "instant_demo"])
+    )
+
+    service_tier = str(form_params.get("service_tier", "vip_pass")).lower()
+    tx_hash = form_params.get("tx_hash") or ""
+
+    if is_complete_action or ("pay" in clean_query.lower() and len(clean_query.split()) >= 3):
+        # Issue verified credential
+        if "institutional" in service_tier or "dossier" in clean_query.lower() or "economic" in clean_query.lower():
+            output = payment.issue_institutional_dossier("Indian Macro & Capital Markets", tx_hash)
+        else:
+            dest = state.get("entity_name") or "Jaipur"
+            params = state.get("extracted_params") or {}
+            days = int(params.get("days", 3))
+            travelers = int(params.get("travelers", 2))
+            budget = params.get("budget", "Budget")
+            output = payment.issue_vip_travel_pass(dest, days, travelers, budget, tx_hash)
+        resp = make_ai_response(output, None)
+    else:
+        # Show interactive checkout card
+        output = f"""# 💳 Fetch.ai Payment Protocol & Monetization Clearing
+**Autonomous Agent Micropayments • Fetch.ai Dorado / Mainnet Rail**
+
+Welcome to the **India Intel Agent Treasury & Licensing Gateway**. You can unlock premium verified intelligence using **ASI** or **FET** tokens:
+
+### 🌟 Premium Services Catalog:
+1. 👑 **Verified VIP All-India Expedited Travel Pass (1.0 ASI / FET):**
+   * Cryptographically signed verifiable travel pass with digital security seal.
+   * Priority 24/7 IRCTC Tatkal assistance guidelines & station lounge protocols.
+   * Emergency helplines (Tourist Police 1363, National Emergency 112, Railway Madad 139).
+   * Embassy & consular assistance directory for foreign visitors.
+2. 📊 **Institutional Investor Economic Intelligence Dossier (2.0 ASI / FET):**
+   * 5-year macro econometric forecast (FY2026-FY2030).
+   * Sectoral FDI equity limits & SEBI FPI compliance matrix.
+
+---
+
+### 🏦 Agent Treasury Information:
+* **Treasury Recipient Address:** `{payment.AGENT_TREASURY_ADDRESS}`
+* **Network:** `Fetch.ai Dorado Testnet` / `Mainnet (ASI)`
+* **Instant Verification:** Select *Instant One-Click Verification* below for immediate testnet credential issuance during the hackathon!
+
+👉 *Use the interactive payment card below to select your tier and unlock your pass:*"""
+        resp = make_ai_response(output, payment.get_payment_card_payload("vip_pass"))
+
+    return {
+        "workflow_stage": "payment_checkout",
+        "final_output": resp["final_output"],
+        "messages": resp["messages"],
+    }
+
+
+def transit_specialist_node(state: AgentState) -> AgentState:
+    """Multi-Agent Transit Specialist Node: Coordinates with companion Transit Subagent."""
+    user_query = get_message_content(state["messages"][-1])
+    clean_query, form_params = parse_incoming_input(user_query)
+
+    dest = state.get("entity_name") or "Jaipur"
+    origin = "Delhi"
+
+    for c in FLAGSHIP_CITIES.keys():
+        if c != dest.lower() and c in clean_query.lower():
+            origin = c.title()
+            break
+
+    transit_resp = transit_agent.resolve_transit_itinerary(origin, dest, "Train")
+    opt = transit_resp.options[0] if transit_resp.options else None
+
+    if opt:
+        opt_md = f"""* **Recommended Service:** **{opt.service_name}** (#{opt.service_number})
+* **Schedule:** 🕒 Departure: **{opt.departure_time}** | Arrival: **{opt.arrival_time}**
+* **Duration:** ⏱️ **{opt.duration}**
+* **Rail Distance:** 📏 **{opt.distance_km} km**
+* **Estimated Fare:** 💰 **{opt.fare_estimate}**
+* **Stations:** {opt.origin_station} ➔ {opt.destination_station}"""
+        booking_url = opt.booking_url
+    else:
+        opt_md = "* Regular superfast express rail connectivity available daily."
+        booking_url = "https://www.irctc.co.in/nget/train-search"
+
+    output = f"""# 🚆 Multi-Agent Transit & Mobility Intelligence
+**Curated by Companion Transit Specialist Subagent (`@transit-agent`)**
+
+### 📍 Route: {transit_resp.origin} ➔ {transit_resp.destination}
+{opt_md}
+
+---
+
+### 💡 Subagent Transit Advisory:
+{transit_resp.advisory}
+
+---
+
+### 🚀 Direct Booking Links:
+* 🚆 **Book Train on IRCTC:**  
+  👉 **[ 🔗 Click to Book on Official IRCTC Portal ]({booking_url})**
+* ✈️ **Search Alternative Flights:**  
+  👉 **[ 🔗 Click to Check Google Flights ]({transit_resp.flight_search_url})**
+* 👑 **Upgrade to VIP Travel Pass:**  
+  👉 *Reply `VIP Pass` or `Pay` to get 24/7 Tatkal assist & station lounge access.*"""
+
+    resp = make_ai_response(output, None)
+    return {
+        "workflow_stage": "transit_specialist",
+        "final_output": resp["final_output"],
+        "messages": resp["messages"],
+    }
+
+
+def destinations_carousel_node(state: AgentState) -> AgentState:
+    """Destinations Carousel Node: Renders an interactive swipeable carousel in ASI:One."""
+    output = """# 🌟 Top Flagship Indian Destinations
+**Interactive Heritage Circuits & UNESCO Highlights**
+
+Swipe through the interactive destination carousel below to explore India's most celebrated heritage, spiritual, and natural circuits. Click **Explore Destination** on any card to begin an autonomous itinerary!"""
+
+    resp = make_ai_response(output, get_destinations_carousel_payload())
+    return {
+        "workflow_stage": "destinations_carousel",
+        "final_output": resp["final_output"],
+        "messages": resp["messages"],
+    }
+
+
 # ----------------------------------------------------
 # 8. SUPERVISOR & ROUTING ENGINE
 # ----------------------------------------------------
@@ -2605,7 +3017,50 @@ def supervisor_router(state: AgentState) -> AgentState:
     if (("science" in selected_domain or "4" in selected_domain) and "choose" not in selected_domain) or q_lower in ["4", "option 4", "opt 4", "open science", "science"] or (
         ("science" in q_lower or "future tech" in q_lower or "technology" in q_lower) and len(q_lower.split()) <= 3 and not any(kw in q_lower for kw in ["isro", "chip", "semiconductor", "ai", "quantum", "5g"])
     ):
-        return {"workflow_stage": "science_form", "entity_name": None, "extracted_params": None}
+        return {"workflow_stage": "science_dossier", "entity_name": None, "extracted_params": None}
+
+    # Review Card CTA actions (Confirm Trip or Modify Trip)
+    action_param = str(form_params.get("action", "")).lower()
+    if action_param == "confirm_trip" or "confirm trip" in q_lower or "confirm and generate" in q_lower:
+        dest = form_params.get("destination") or "Jaipur"
+        parsed = parse_travel_params(clean_query, form_params)
+        return {"workflow_stage": "tourism_planner", "entity_name": str(dest).lower(), "extracted_params": parsed}
+
+    if action_param == "modify_trip" or "modify preferences" in q_lower or "adjust preferences" in q_lower:
+        dest = form_params.get("destination") or "Jaipur"
+        return {"workflow_stage": "tourism_briefing", "entity_name": str(dest).lower(), "extracted_params": None}
+
+    # Real-Time Currency Converter check
+    if (
+        action_param == "convert_forex"
+        or ("currency" in selected_domain or "forex" in selected_domain or "5" in selected_domain)
+        or any(kw in q_lower for kw in [
+            "forex", "currency", "exchange rate", "convert usd", "convert eur", "convert gbp", "convert aed",
+            "usd to inr", "eur to inr", "how much is $", "dollar to rupee", "rate of rupee", "convert currency"
+        ])
+    ):
+        return {"workflow_stage": "currency_converter", "entity_name": None, "extracted_params": form_params}
+
+    # Payment Protocol & VIP Pass check
+    if (
+        action_param == "complete_payment"
+        or ("payment" in selected_domain or "pay" in selected_domain or "6" in selected_domain)
+        or any(kw in q_lower for kw in [
+            "vip pass", "payment", "buy pass", "unlock pass", "unlock dossier", "fet token", "asi token",
+            "pay 1 asi", "pay 1 fet", "travel pass"
+        ])
+        or (q_lower.startswith("pay") and len(q_lower.split()) <= 4)
+    ):
+        return {"workflow_stage": "payment_checkout", "entity_name": None, "extracted_params": form_params}
+
+    # Destinations Carousel check
+    if any(kw in q_lower for kw in ["carousel", "top destinations", "browse cities", "explore destinations"]):
+        return {"workflow_stage": "destinations_carousel", "entity_name": None, "extracted_params": None}
+
+    # Transit Specialist inquiry check
+    if any(kw in q_lower for kw in ["transit to", "train to", "vande bharat to", "gatimaan to", "how to reach", "trains to"]) and any(city in q_lower for city in FLAGSHIP_CITIES):
+        matched_transit_city = next(city for city in FLAGSHIP_CITIES if city in q_lower)
+        return {"workflow_stage": "transit_specialist", "entity_name": matched_transit_city, "extracted_params": None}
 
     # 3. Check for Tourism Flow (Destinations, Form Submissions, Itineraries)
     matched_city = None
@@ -2737,6 +3192,10 @@ def route_step(state: AgentState) -> str:
         "science_dossier": "science_dashboard_node",
         "state_composite": "state_composite_node",
         "out_of_scope": "out_of_scope_node",
+        "currency_converter": "currency_converter_node",
+        "payment_checkout": "payment_checkout_node",
+        "transit_specialist": "transit_specialist_node",
+        "destinations_carousel": "destinations_carousel_node",
     }
     return stage_to_node.get(stage, "landing_page_node")
 
@@ -2761,6 +3220,10 @@ workflow.add_node("science_intake_form_node", science_intake_form_node)
 workflow.add_node("science_dashboard_node", science_dashboard_node)
 workflow.add_node("state_composite_node", state_composite_node)
 workflow.add_node("out_of_scope_node", out_of_scope_node)
+workflow.add_node("currency_converter_node", currency_converter_node)
+workflow.add_node("payment_checkout_node", payment_checkout_node)
+workflow.add_node("transit_specialist_node", transit_specialist_node)
+workflow.add_node("destinations_carousel_node", destinations_carousel_node)
 
 # Add Edges
 workflow.add_edge(START, "supervisor")
@@ -2782,6 +3245,10 @@ workflow.add_conditional_edges(
         "science_dashboard_node": "science_dashboard_node",
         "state_composite_node": "state_composite_node",
         "out_of_scope_node": "out_of_scope_node",
+        "currency_converter_node": "currency_converter_node",
+        "payment_checkout_node": "payment_checkout_node",
+        "transit_specialist_node": "transit_specialist_node",
+        "destinations_carousel_node": "destinations_carousel_node",
     },
 )
 
@@ -2799,6 +3266,10 @@ workflow.add_edge("science_intake_form_node", END)
 workflow.add_edge("science_dashboard_node", END)
 workflow.add_edge("state_composite_node", END)
 workflow.add_edge("out_of_scope_node", END)
+workflow.add_edge("currency_converter_node", END)
+workflow.add_edge("payment_checkout_node", END)
+workflow.add_edge("transit_specialist_node", END)
+workflow.add_edge("destinations_carousel_node", END)
 
 # Compile
 india_graph = workflow.compile()
