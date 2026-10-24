@@ -197,28 +197,42 @@ def get_landing_card_payload() -> MetadataContent:
     return create_card_content(payload)
 
 
-def get_tourism_card_payload(selected_city: str = "Jaipur") -> MetadataContent:
+def get_tourism_card_payload(selected_city: Optional[str] = None) -> MetadataContent:
     """Interactive card for Tourism trip planning with native dropdown selectors."""
     city_options = [
         FormFieldOption(label="🏰 Jaipur (Pink City, Rajasthan)", value="Jaipur"),
         FormFieldOption(label="🏛️ Agra (Taj Mahal, Uttar Pradesh)", value="Agra"),
         FormFieldOption(label="🇮🇳 New Delhi (Sovereign Capital)", value="Delhi"),
+        FormFieldOption(label="🏔️ Srinagar (Dal Lake, Kashmir)", value="Srinagar"),
         FormFieldOption(label="🌊 Mumbai (Gateway of India, Maharashtra)", value="Mumbai"),
         FormFieldOption(label="🪔 Varanasi (Ganga Ghats, Uttar Pradesh)", value="Varanasi"),
         FormFieldOption(label="⛵ Udaipur (City of Lakes, Rajasthan)", value="Udaipur"),
         FormFieldOption(label="🏖️ Goa (Beaches & UNESCO Churches)", value="Goa"),
         FormFieldOption(label="🌴 Kochi (Kerala Backwaters)", value="Kochi"),
         FormFieldOption(label="✨ Amritsar (Golden Temple, Punjab)", value="Amritsar"),
-        FormFieldOption(label="🏔️ Srinagar (Dal Lake, Kashmir)", value="Srinagar"),
         FormFieldOption(label="🧘 Rishikesh (Yoga Capital, Uttarakhand)", value="Rishikesh"),
         FormFieldOption(label="🚂 Darjeeling (Toy Train & Tea, West Bengal)", value="Darjeeling"),
     ]
-    clean_city = (selected_city or "Jaipur").strip().title()
-    if not any(opt.value.lower() == clean_city.lower() for opt in city_options):
-        city_options.insert(0, FormFieldOption(label=f"📍 {clean_city}", value=clean_city))
+
+    is_first_time = (not selected_city) or selected_city.strip().lower() in ("none", "jaipur_default", "first_time", "all", "india")
+    if is_first_time:
+        card_title = "✈️ India Tourism & Trip Planning Intake"
+    else:
+        clean_city = selected_city.strip().title()
+        card_title = f"✈️ Trip Planning Intake: {clean_city}"
+        matched_idx = -1
+        for idx, opt in enumerate(city_options):
+            if opt.value.lower() == clean_city.lower():
+                matched_idx = idx
+                break
+        if matched_idx >= 0:
+            chosen = city_options.pop(matched_idx)
+            city_options.insert(0, chosen)
+        else:
+            city_options.insert(0, FormFieldOption(label=f"📍 {clean_city}", value=clean_city))
 
     payload = FormCardPayload(
-        title=f"✈️ Trip Planning Intake: {clean_city}",
+        title=card_title,
         fields=[
             FormField(
                 name="destination",
@@ -792,7 +806,490 @@ FLAGSHIP_CITIES = {
                 }
             ]
         }
+    },
+    "srinagar": {
+        "title": "Srinagar (Kashmir) — Paradise on Earth 🇮🇳",
+        "city_name": "Srinagar",
+        "state_name": "Jammu & Kashmir",
+        "best_known_for": "Iconic Dal Lake houseboats and Shikara rides, majestic Mughal terraced water gardens, snow-capped Pir Panjal vistas, saffron fields of Pampore, world-famous Kashmiri Pashmina shawls and walnut wood carving.",
+        "major_attractions": ["Dal Lake (Shikara & Houseboats)", "Mughal Gardens (Shalimar & Nishat Bagh)", "Shankaracharya Temple", "Hazratbal Shrine", "Pari Mahal", "Old City Bazaars & Lal Chowk", "Nigeen Lake"],
+        "unesco_sites": "Mughal Gardens of Kashmir (Tentative UNESCO World Heritage List) & UNESCO Creative Cities Network (Crafts and Folk Arts)",
+        "best_time": "April to October (Pleasant blooms, Chinar foliage & summer cool) and December to February (Magical winter snowfall and snow activities in nearby Gulmarg).",
+        "approx_duration": "3 to 5 Days recommended",
+        "local_transit": "Shikaras on Dal & Nigeen lakes, pre-paid tourist taxis, and local cabs",
+        "popular_activities": "Morning Shikara ride to the Floating Vegetable Market, heritage sunset from Pari Mahal, authentic multi-course Wazwan dinner on a carved cedar-wood houseboat, shopping for certified Kashmiri saffron and Pashmina shawls.",
+        "ticket_info": "Shikara Ride: ₹700 - ₹1,200 per boat (2 hours). Mughal Gardens (Shalimar/Nishat): ₹24 (Indians) / ₹100 (Foreigners) per garden. Gulmarg Gondola: Phase 1 (₹810) / Phase 2 (₹1,010).",
+        "culinary": "Authentic Wazwan feast (Rogan Josh, Rista, Gushtaba, Tabak Maaz), Saffron Kahwa with crushed almonds, Nadru Yakhni (lotus stem curry), Dum Aloo, and Kashmiri Sheermal.",
+        "train_route": "Connected via Vande Bharat Express to Jammu Tawi (JAT) / Katra (SVDK) (#22439: New Delhi NDLS 06:00 AM → SVDK 02:00 PM), with direct connectivity across the landmark Chenab Railway Bridge via the Udhampur-Srinagar-Baramulla Rail Link (USBRL).",
+        "flight_route": "Sheikh ul-Alam International Airport (SXR), Srinagar (12 km from city center). Daily direct flights connect Srinagar to New Delhi, Mumbai, Bengaluru, Chandigarh, and Jammu.",
+        "waypoints": [
+            "Sheikh ul-Alam International Airport (SXR), Srinagar, Jammu & Kashmir",
+            "Boulevard Road & Dal Lake Shikara Ghat, Srinagar",
+            "Shalimar Bagh Mughal Garden, Srinagar",
+            "Nishat Bagh, Foreshore Road, Srinagar",
+            "Shankaracharya Temple, Dalgate, Srinagar",
+            "Pari Mahal, Cheshma Shahi, Srinagar",
+            "Hazratbal Shrine, Srinagar",
+        ],
+        "ticket_portal": "https://asi.nic.in/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "Zostel Srinagar",
+                    "rating": "4.6/5 (★ Backpacker Favorite)",
+                    "price": "₹1,200 - ₹2,200 / night",
+                    "location": "Nishat, near Dal Lake",
+                    "type": "Boutique Hostel & Private AC Rooms",
+                    "description": "Scenic garden patio surrounded by apple and walnut trees, rooftop mountain views, clean facilities, vibrant traveler community."
+                },
+                {
+                    "name": "Houseboat New Golden Flower",
+                    "rating": "4.5/5 (★ Heritage Houseboat)",
+                    "price": "₹1,800 - ₹2,800 / night",
+                    "location": "Dal Lake (Gate 9, Boulevard Road)",
+                    "type": "Traditional Kashmiri Cedar Houseboat",
+                    "description": "Hand-carved walnut wood interiors, Kashmiri carpets, personal Shikara transfers, stunning sunset views over Dal Lake."
+                }
+            ],
+            "value": [
+                {
+                    "name": "The Chinar Resort & Spa",
+                    "rating": "4.7/5 (★ Valley Retreat)",
+                    "price": "₹5,500 - ₹8,500 / night",
+                    "location": "Near Shankaracharya Hill",
+                    "type": "Upscale Valley Resort",
+                    "description": "Surrounded by pine-scented hills, heated indoor pool, authentic Kashmiri dining, premium contemporary comforts."
+                },
+                {
+                    "name": "Hotel Grand Mumtaz",
+                    "rating": "4.5/5 (★ Central Comfort)",
+                    "price": "₹4,800 - ₹7,200 / night",
+                    "location": "Maulana Azad Road, City Center",
+                    "type": "Heritage-style City Hotel",
+                    "description": "Prime location close to Lal Chowk and Dal Lake, multi-cuisine restaurant, centrally heated rooms."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "The Lalit Grand Palace Srinagar",
+                    "rating": "4.9/5 (★ Royal Maharaja Palace)",
+                    "price": "₹24,000 - ₹48,000 / night",
+                    "location": "Gupkar Road, facing Dal Lake",
+                    "type": "Former Royal Residence of Maharaja Hari Singh",
+                    "description": "Built in 1910 overlooking Dal Lake; expansive manicured gardens with century-old Chinar trees, palatial suites, royal indoor heated pool."
+                },
+                {
+                    "name": "Vivanta Dal View (Taj Group)",
+                    "rating": "4.8/5 (★ Panoramic Luxury)",
+                    "price": "₹18,000 - ₹34,000 / night",
+                    "location": "Kralsangri, Gopakar",
+                    "type": "Luxury Hilltop Resort",
+                    "description": "Perched on Kralsangri hill with breathtaking 180-degree panoramic views of Dal Lake and Zabarwan mountains."
+                }
+            ]
+        }
+    },
+    "varanasi": {
+        "title": "Varanasi (Kashi / Benares) — The Spiritual Capital 🇮🇳",
+        "city_name": "Varanasi",
+        "state_name": "Uttar Pradesh",
+        "best_known_for": "World's oldest living continuous city (5,000+ years), sacred Ganga Ghats, grand evening Ganga Aarti at Dashashwamedh, Kashi Vishwanath Jyotirlinga temple, silk weaving (Banarasi sarees), and Sarnath.",
+        "major_attractions": ["Kashi Vishwanath Temple & Corridor", "Dashashwamedh Ghat (Ganga Aarti)", "Assi Ghat (Subah-e-Banaras)", "Manikarnika Ghat", "Sarnath (UNESCO Lion Capital)", "Banaras Hindu University (BHU)", "Ramnagar Fort"],
+        "unesco_sites": "Iconic Riverfront of the River Ganga (Tentative UNESCO List) and Monuments at Sarnath",
+        "best_time": "October to March (Pleasant dry winter, optimal for morning boat rides and temple walks).",
+        "approx_duration": "2 to 3 Days recommended",
+        "local_transit": "Traditional wooden rowboats and motorboats on the Ganga, pre-paid autos, e-rickshaws, and app cabs",
+        "popular_activities": "Dawn sunrise boat ride along the 84 ghats, grand evening Maha Aarti at Dashashwamedh, heritage alley walk, Banarasi silk saree shopping.",
+        "ticket_info": "Morning Boat: ₹400 - ₹800. Kashi Vishwanath: Free (Sugam VIP Pass: ₹300). Sarnath ASI: ₹25 / ₹300.",
+        "culinary": "Kachori Jalebi (Ram Bhandar), Tamatar Chaat (Kashi Chaat Bhandar), Blue Lassi, and authentic Banarasi Paan.",
+        "train_route": "Vande Bharat Express (#22436: New Delhi NDLS 06:00 AM → Varanasi BSB 02:00 PM / Return #22435: BSB 03:00 PM → NDLS 11:00 PM).",
+        "flight_route": "Lal Bahadur Shastri International Airport (VNS), Babatpur (22 km from ghats). Daily direct flights from Delhi, Mumbai, Bengaluru, Kolkata.",
+        "waypoints": [
+            "Varanasi Junction (BSB) / Banaras Railway Station, Varanasi",
+            "Kashi Vishwanath Temple & Corridor, Lahori Tola, Varanasi",
+            "Dashashwamedh Ghat, Godowlia, Varanasi",
+            "Assi Ghat, Shivala, Varanasi",
+            "Sarnath Archaeological Site & Dhamek Stupa, Varanasi",
+        ],
+        "ticket_portal": "https://asi.payumoney.com/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "Zostel Varanasi",
+                    "rating": "4.5/5 (★ Backpacker Gem)",
+                    "price": "₹1,100 - ₹2,000 / night",
+                    "location": "Near Dashashwamedh Ghat Road",
+                    "type": "Vibrant Youth Hostel & Private Rooms",
+                    "description": "500-meter walk to main ghats, colorful rooftop common room, morning sunrise boat tours, spotless AC dorms."
+                }
+            ],
+            "value": [
+                {
+                    "name": "BrijRama Palace, Varanasi",
+                    "rating": "4.8/5 (★ 18th-Century Ghat Palace)",
+                    "price": "₹16,000 - ₹28,000 / night",
+                    "location": "Darbhanga Ghat",
+                    "type": "Historic Riverside Palace Hotel",
+                    "description": "Built in 1812 directly on Darbhanga Ghat; private boat transfers, traditional classical music performances, pure vegetarian fine dining."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "Taj Nadesar Palace",
+                    "rating": "4.9/5 (★ Royal Palace Retreat)",
+                    "price": "₹28,000 - ₹55,000 / night",
+                    "location": "Nadesar Palace Grounds",
+                    "type": "Historical Sanctuary of the Maharaja",
+                    "description": "Set amidst mango orchards and jasmine fields; horse-drawn royal carriage arrivals, curated heritage dining, butler service."
+                }
+            ]
+        }
+    },
+    "udaipur": {
+        "title": "Udaipur — City of Lakes & Royal Palaces 🇮🇳",
+        "city_name": "Udaipur",
+        "state_name": "Rajasthan",
+        "best_known_for": "Lake Pichola, majestic white marble City Palace complex, floating Lake Palace, romantic sunset boat cruises, Jag Mandir island, and vibrant Mewari art and culture.",
+        "major_attractions": ["City Palace Udaipur", "Lake Pichola (Boat Cruise)", "Jag Mandir Island Palace", "Saheliyon-ki-Bari", "Jagdish Temple", "Bagore Ki Haveli (Folk Dance)", "Monsoon Palace (Sajjangarh)"],
+        "unesco_sites": "Hill Forts of Rajasthan & Historic ensemble of Mewar palaces",
+        "best_time": "September to March (Pleasant temperate winter, optimal for lake cruises and rooftop dining).",
+        "approx_duration": "2 to 4 Days recommended",
+        "local_transit": "Pre-paid autos, app cabs (Uber/Ola), and traditional lake motorboats",
+        "popular_activities": "Sunset boat cruise on Lake Pichola past Jag Niwas, Dharohar folk dance at Bagore Ki Haveli, City Palace museum tour.",
+        "ticket_info": "City Palace: ₹400. Lake Pichola Cruise: ₹800 - ₹1,000. Bagore Ki Haveli Show: ₹100 / ₹200.",
+        "culinary": "Dal Baati Churma, Gatte ki Sabzi, Ker Sangri, Laal Maas, and traditional Mewari thali.",
+        "train_route": "Vande Bharat Express connects Udaipur City (UDZ) to Jaipur (JP) and Agra (#20980 / #20979).",
+        "flight_route": "Maharana Pratap Airport (UDR), Dabok (22 km from old city). Daily direct flights from Delhi, Mumbai, Bengaluru.",
+        "waypoints": [
+            "Udaipur City Railway Station, Jawahar Nagar, Udaipur",
+            "City Palace, Old City, Udaipur",
+            "Lake Pichola & Gangaur Ghat, Udaipur",
+            "Saheliyon-ki-Bari, Panchwati, Udaipur",
+            "Monsoon Palace (Sajjangarh), Kodiyat, Udaipur",
+        ],
+        "ticket_portal": "https://bookrajmonuments.rajasthan.gov.in/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "Zostel Udaipur",
+                    "rating": "4.6/5 (★ Rooftop Lake Views)",
+                    "price": "₹1,200 - ₹2,200 / night",
+                    "location": "Near Chandpole, Lake Pichola",
+                    "type": "Hostel & Boutique Private Rooms",
+                    "description": "Rooftop terrace cafe overlooking Lake Pichola and the City Palace, clean rooms, walking distance to ghats."
+                }
+            ],
+            "value": [
+                {
+                    "name": "Jagat Niwas Palace Hotel",
+                    "rating": "4.7/5 (★ Restored 17th-Century Haveli)",
+                    "price": "₹5,500 - ₹9,500 / night",
+                    "location": "Lal Ghat, behind City Palace",
+                    "type": "Heritage Mansion on Lake Pichola",
+                    "description": "Traditional Jharokha window seating suspended directly over Lake Pichola, authentic Mewari hospitality."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "Taj Lake Palace, Udaipur",
+                    "rating": "4.9/5 (★ World-Famous Floating Palace)",
+                    "price": "₹35,000 - ₹75,000 / night",
+                    "location": "Lake Pichola island",
+                    "type": "1746 Floating White Marble Palace",
+                    "description": "Built in 1746 by Maharana Jagat Singh II in the center of Lake Pichola; private boat arrival with rose petal shower, royal butler service."
+                }
+            ]
+        }
+    },
+    "goa": {
+        "title": "Goa — Coastal Heritage, Beaches & Portuguese Architecture 🇮🇳",
+        "city_name": "Goa",
+        "state_name": "Goa",
+        "best_known_for": "UNESCO World Heritage churches of Old Goa, Portuguese colonial Latin Quarter (Fontainhas), pristine coastal beaches (Calangute, Anjuna, Palolem), Dudhsagar Waterfalls, and vibrant Goan-Portuguese fusion cuisine.",
+        "major_attractions": ["Basilica of Bom Jesus (UNESCO)", "Se Cathedral", "Fort Aguada & Lighthouse", "Fontainhas Latin Quarter (Panaji)", "Dudhsagar Waterfalls", "Anjuna & Vagator Cliffs", "Palolem Beach"],
+        "unesco_sites": "Churches and Convents of Goa (UNESCO World Heritage Site)",
+        "best_time": "November to February (Sun-drenched breezy coastal winter with pleasant nights).",
+        "approx_duration": "3 to 6 Days recommended",
+        "local_transit": "Self-drive rental scooters/cars, pre-paid tourist taxis, Goa Ferry services",
+        "popular_activities": "Heritage walking tour of Fontainhas Latin Quarter, sunset dolphin cruise on Mandovi River, water sports, beach shack seafood dining.",
+        "ticket_info": "Old Goa Churches: Free. Fort Aguada: ₹25 / ₹300. Dudhsagar Jeep Safari: ₹3,500 per jeep.",
+        "culinary": "Goan Fish Curry Thali, Prawn Balchão, Pork Vindaloo, Bebinca dessert, and fresh tender coconut.",
+        "train_route": "Madgaon (MAO) / Thivim (THVM) Vande Bharat Express from Mumbai CSMT (#22229 / #22230).",
+        "flight_route": "Served by both Manohar International Airport (GOX) Mopa and Dabolim Airport (GOI).",
+        "waypoints": [
+            "Madgaon (MAO) / Thivim Railway Station, Goa",
+            "Basilica of Bom Jesus, Old Goa",
+            "Fontainhas Latin Quarter, Panaji, Goa",
+            "Fort Aguada, Candolim, Goa",
+            "Palolem Beach, Canacona, South Goa",
+        ],
+        "ticket_portal": "https://asi.payumoney.com/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "The Hosteller Goa (Anjuna)",
+                    "rating": "4.5/5 (★ Coastal Social Hub)",
+                    "price": "₹1,100 - ₹2,000 / night",
+                    "location": "Near Anjuna Beach",
+                    "type": "Backpacker Hostel & AC Pods",
+                    "description": "Swimming pool, open-air cafe, bike rentals, clean dorms and private rooms, 10-minute walk to beach."
+                }
+            ],
+            "value": [
+                {
+                    "name": "Panjim Inn (Heritage)",
+                    "rating": "4.6/5 (★ Fontainhas Heritage)",
+                    "price": "₹4,800 - ₹7,500 / night",
+                    "location": "Fontainhas Latin Quarter, Panaji",
+                    "type": "Restored 19th-Century Portuguese Mansion",
+                    "description": "Four-poster antique beds, period paintings, courtyard veranda restaurant in the historic Latin Quarter."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "Taj Fort Aguada Resort & Spa",
+                    "rating": "4.8/5 (★ Beachfront Fortress)",
+                    "price": "₹18,000 - ₹35,000 / night",
+                    "location": "Sinquerim Beach, Candolim",
+                    "type": "Luxury Historic Coastal Resort",
+                    "description": "Built on the ramparts of a 16th-century Portuguese fortress facing the Arabian Sea; private beach access, royal spa."
+                }
+            ]
+        }
+    },
+    "kochi": {
+        "title": "Kochi (Cochin) — Queen of the Arabian Sea 🇮🇳",
+        "city_name": "Kochi",
+        "state_name": "Kerala",
+        "best_known_for": "Colonial Fort Kochi, iconic cantilevered Chinese Fishing Nets, Mattancherry Dutch Palace, Jew Town and 1568 Paradesi Synagogue, and gateway to the tranquil Kerala Backwaters.",
+        "major_attractions": ["Fort Kochi & Chinese Fishing Nets", "Mattancherry Palace (Dutch Palace)", "Paradesi Synagogue (Jew Town)", "Santa Cruz Cathedral Basilica", "Kerala Kathakali Centre", "Marine Drive & Kochi Water Metro"],
+        "unesco_sites": "Historic Port Ensemble of Muziris & Western Ghats gateway",
+        "best_time": "October to March (Pleasant tropical winter, optimal for harbor walks and backwater cruises).",
+        "approx_duration": "2 to 4 Days recommended",
+        "local_transit": "Kochi Water Metro (air-conditioned electric ferries), Kochi Metro rail, autos, and app cabs",
+        "popular_activities": "Walking through colonial Fort Kochi, watching fishermen operate cantilevered Chinese fishing nets, Kathakali evening dance, spice market shopping.",
+        "ticket_info": "Mattancherry Palace: ₹5. Synagogue: ₹10. Kochi Water Metro: ₹20 - ₹40. Kathakali Show: ₹300 - ₹500.",
+        "culinary": "Kerala Sadhya feast on banana leaf, Appam with Vegetable Ishtu, Karimeen Pollichathu (pearl spot fish in banana leaf), and Malabar Parotta.",
+        "train_route": "Ernakulam Junction (ERS) Vande Bharat Express (#20633: Kasaragod → Thiruvananthapuram via ERS).",
+        "flight_route": "Cochin International Airport (COK), world's first fully solar-powered airport (28 km from city center).",
+        "waypoints": [
+            "Ernakulam Junction (ERS), Kochi",
+            "Fort Kochi Beach & Chinese Fishing Nets, Kochi",
+            "Mattancherry Palace, Jew Town, Kochi",
+            "Paradesi Synagogue, Jew Town, Kochi",
+            "Marine Drive Promenade, Ernakulam",
+        ],
+        "ticket_portal": "https://asi.nic.in/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "Zostel Kochi (Fort Kochi)",
+                    "rating": "4.6/5 (★ Colonial Pick)",
+                    "price": "₹1,100 - ₹2,000 / night",
+                    "location": "Near Princess Street, Fort Kochi",
+                    "type": "Heritage Hostel & AC Rooms",
+                    "description": "Steps from cafes and art galleries, common terrace, clean dorms and private rooms, cycling tours."
+                }
+            ],
+            "value": [
+                {
+                    "name": "Old Harbour Hotel",
+                    "rating": "4.8/5 (★ 300-Year-Old Heritage)",
+                    "price": "₹7,500 - ₹12,000 / night",
+                    "location": "Tower Road, Fort Kochi",
+                    "type": "Restored Dutch Colonial Boutique Hotel",
+                    "description": "Lush garden courtyard, Ayurvedic massages, fresh seafood dining, facing ancient Chinese fishing nets."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "Brunton Boatyard (CGH Earth)",
+                    "rating": "4.9/5 (★ Harbor Grandeur)",
+                    "price": "₹16,000 - ₹28,000 / night",
+                    "location": "Calvathy, Fort Kochi harbor",
+                    "type": "Historic Victorian Boatyard Palace",
+                    "description": "Overlooking the vibrant Cochin harbor channel where dolphins play; tea lounge, colonial maritime suites, gourmet dining."
+                }
+            ]
+        }
+    },
+    "amritsar": {
+        "title": "Amritsar — The Holy City of the Golden Temple 🇮🇳",
+        "city_name": "Amritsar",
+        "state_name": "Punjab",
+        "best_known_for": "Sri Harmandir Sahib (The Golden Temple), Wagah Border Beating Retreat ceremony, Jallianwala Bagh, Partition Museum, and world-renowned Punjabi hospitality and gastronomy.",
+        "major_attractions": ["Sri Harmandir Sahib (Golden Temple)", "Wagah Border Beating Retreat Ceremony", "Jallianwala Bagh Memorial", "Partition Museum (Town Hall)", "Gobindgarh Fort", "Durgiana Temple"],
+        "unesco_sites": "Sri Harmandir Sahib (Tentative UNESCO World Heritage List)",
+        "best_time": "October to March (Pleasant sunny days and crisp cool nights).",
+        "approx_duration": "2 to 3 Days recommended",
+        "local_transit": "Free Golden Temple electric buses, pre-paid autos, e-rickshaws, and app cabs",
+        "popular_activities": "Evening Palki Sahib ceremony at Golden Temple, community service (Seva) at Guru Ka Langar (serving 100,000+ meals daily), cheering at Wagah Border ceremony.",
+        "ticket_info": "Golden Temple & Langar: Free to all. Wagah Border: Free entry (Reach by 03:30 PM for good seats). Partition Museum: ₹10 (Indians) / ₹250 (Foreigners).",
+        "culinary": "Amritsari Kulcha with Chole and melting butter (Kulcha Land / Pehalwan), Makki di Roti & Sarson da Saag, Creamy Lassi (Gian Chand / Ahuja), and Gulab Jamun (Sharma Sweets).",
+        "train_route": "Vande Bharat Express (#22487: New Delhi NDLS 03:15 PM → Amritsar ASR 08:45 PM / Return #22488: ASR 08:20 AM → NDLS 01:50 PM).",
+        "flight_route": "Sri Guru Ram Dass Jee International Airport (ATQ), Amritsar (11 km from Golden Temple).",
+        "waypoints": [
+            "Amritsar Junction Railway Station, Amritsar",
+            "Sri Harmandir Sahib (Golden Temple), Amritsar",
+            "Jallianwala Bagh, Golden Temple Road, Amritsar",
+            "Partition Museum, Town Hall, Amritsar",
+            "Wagah Border Checkpost, Attari, Punjab",
+        ],
+        "ticket_portal": "https://asi.nic.in/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "Bloomrooms @ Heritage Walk Amritsar",
+                    "rating": "4.5/5 (★ Prime Heritage Walk)",
+                    "price": "₹2,200 - ₹3,400 / night",
+                    "location": "Heritage Street, 200m from Golden Temple",
+                    "type": "Modern Smart Hotel",
+                    "description": "Bright cheerful rooms, unbeatable location on the pedestrian-only Heritage Walk leading to the temple."
+                }
+            ],
+            "value": [
+                {
+                    "name": "Ranjit's SVAASA - Heritage Boutique Haveli",
+                    "rating": "4.7/5 (★ 200-Year-Old Haveli)",
+                    "price": "₹5,500 - ₹8,500 / night",
+                    "location": "Mall Road",
+                    "type": "Restored Red Brick Nanak Shahi Haveli",
+                    "description": "Organic kitchen dining, tranquil garden spa, authentic Punjabi heritage ambiance."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "Taj Swarna, Amritsar",
+                    "rating": "4.8/5 (★ Premier Luxury)",
+                    "price": "₹9,500 - ₹18,000 / night",
+                    "location": "Majitha Verka Bypass",
+                    "type": "Luxury Modern Hotel",
+                    "description": "Outdoor pool, Jiva Spa, authentic Punjabi & world cuisine (Grand Trunk), opulent suites."
+                }
+            ]
+        }
+    },
+    "rishikesh": {
+        "title": "Rishikesh — Yoga Capital of the World & Himalayan Gateway 🇮🇳",
+        "city_name": "Rishikesh",
+        "state_name": "Uttarakhand",
+        "best_known_for": "Spiritual capital of yoga, sacred Triveni Ghat Ganga Aarti, Ram Jhula & Laxman Jhula, The Beatles Ashram, white-water river rafting on the holy Ganges, and foothills of the Himalayas.",
+        "major_attractions": ["Triveni Ghat (Maha Ganga Aarti)", "Ram Jhula & Swarg Ashram", "The Beatles Ashram (Chaurasi Kutia)", "Parmarth Niketan Ashram", "White-water Rafting on Ganges", "Neer Garh Waterfall", "Tera Manzil Temple (Trimbakeshwar)"],
+        "unesco_sites": "Sacred Himalayan Pilgrimage Circuit & River Ganges Corridor",
+        "best_time": "September to April (Pleasant mountain weather and ideal river conditions for rafting).",
+        "approx_duration": "2 to 4 Days recommended",
+        "local_transit": "Shared vikrams (tempo-autos), e-rickshaws, rental scooters, and walking along pedestrian bridges",
+        "popular_activities": "Evening Ganga Aarti with floating diya lamps at Parmarth Niketan & Triveni Ghat, 16 km Grade III white-water rafting from Shivpuri, sunrise meditation, Ayurvedic massage and yoga workshops.",
+        "ticket_info": "Triveni Ghat Aarti: Free. Beatles Ashram: ₹150 (Indians) / ₹600 (Foreigners). River Rafting (16 km Shivpuri to Rishikesh): ₹1,000 - ₹1,500 per person.",
+        "culinary": "Pure vegetarian Ayurvedic meals, Aloo Puri breakfast at Chotiwala, organic vegan cafes (Beatles Cafe, Little Buddha), masala chai, and fresh mountain fruit juices.",
+        "train_route": "Vande Bharat Express (#22457: Anand Vihar ANVT 05:50 PM → Haridwar HW / Dehradun DDN 10:20 PM) connected to Yog Nagari Rishikesh (YNRK).",
+        "flight_route": "Dehradun Jolly Grant Airport (DED) is located just 21 km from Rishikesh (35-minute taxi drive).",
+        "waypoints": [
+            "Yog Nagari Rishikesh Railway Station, Rishikesh",
+            "Triveni Ghat, Rishikesh",
+            "Ram Jhula & Parmarth Niketan, Swarg Ashram, Rishikesh",
+            "The Beatles Ashram, Rajaji Tiger Reserve, Rishikesh",
+            "Shivpuri Rafting Base, Uttarakhand",
+        ],
+        "ticket_portal": "https://asi.nic.in/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "Zostel Rishikesh (Tapovan)",
+                    "rating": "4.6/5 (★ Backpacker Social)",
+                    "price": "₹1,000 - ₹1,800 / night",
+                    "location": "Tapovan, Rishikesh",
+                    "type": "Hostel & AC Private Rooms",
+                    "description": "Rooftop mountain views, yoga sessions, community cafe, walking distance to cafes and Ganga."
+                }
+            ],
+            "value": [
+                {
+                    "name": "Aloha on the Ganges",
+                    "rating": "4.7/5 (★ Riverfront Resort)",
+                    "price": "₹6,500 - ₹11,000 / night",
+                    "location": "National Highway 58, Tapovan",
+                    "type": "Luxury Riverfront Resort",
+                    "description": "Infinity pool overlooking the emerald Ganges River, private ghat, yoga pavilion, exquisite riverside dining."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "Ananda in the Himalayas",
+                    "rating": "4.9/5 (★ World-Leading Wellness Palace)",
+                    "price": "₹38,000 - ₹70,000 / night",
+                    "location": "The Palace Estate, Narendra Nagar",
+                    "type": "Viceregal Palace & Luxury Destination Spa",
+                    "description": "100-acre Maharaja palace estate overlooking the Ganges river valley; bespoke Ayurvedic wellness programs, royal spa."
+                }
+            ]
+        }
+    },
+    "darjeeling": {
+        "title": "Darjeeling — Queen of the Hills & UNESCO Himalayan Railway 🇮🇳",
+        "city_name": "Darjeeling",
+        "state_name": "West Bengal",
+        "best_known_for": "UNESCO World Heritage Toy Train, panoramic sunrise over Mount Kanchenjunga (world's 3rd highest peak) from Tiger Hill, world-renowned Darjeeling black tea estates, and British colonial hill station heritage.",
+        "major_attractions": ["Darjeeling Himalayan Railway (UNESCO Toy Train)", "Tiger Hill (Kanchenjunga Sunrise)", "Batasia Loop & War Memorial", "Happy Valley Tea Estate", "Himalayan Mountaineering Institute & Zoo", "Peace Pagoda & Japanese Temple", "Mall Road & Chowrasta"],
+        "unesco_sites": "Mountain Railways of India (Darjeeling Himalayan Railway - UNESCO World Heritage Site)",
+        "best_time": "March to May (Spring rhododendron blooms) and October to December (Clear crisp Himalayan skies with panoramic mountain views).",
+        "approx_duration": "2 to 4 Days recommended",
+        "local_transit": "Shared tourist jeeps (Sumo/Bolero), pre-paid taxis, and the scenic UNESCO Toy Train",
+        "popular_activities": "Dawn 04:00 AM trip to Tiger Hill for golden sunrise over Kanchenjunga, Joy Ride on the steam Toy Train from Darjeeling to Ghum, guided tea tasting at Happy Valley, walk along Chowrasta Mall.",
+        "ticket_info": "Toy Train Joy Ride (Steam engine): ₹1,500 (First Class). Tiger Hill Observatory: ₹50. HMI & Padmaja Naidu Zoo: ₹110. Tea Tasting: ₹100 - ₹250.",
+        "culinary": "Steaming hot Tibetan Momos, Thukpa noodle soup, Darjeeling First Flush tea, Churpee local cheese, and English bakery treats at historic Glenary's (Bakery established 1885).",
+        "train_route": "New Jalpaiguri (NJP) connected via Vande Bharat Express from Howrah (#22301 / #22302: Howrah 05:55 AM → NJP 01:25 PM), followed by scenic mountain taxi drive (70 km / 3 hours).",
+        "flight_route": "Bagdogra International Airport (IXB), Siliguri (68 km / 2.5 hours scenic uphill mountain drive to Darjeeling).",
+        "waypoints": [
+            "Darjeeling Railway Station (DHR), Darjeeling",
+            "Tiger Hill Sunrise Point, Senchal, Darjeeling",
+            "Batasia Loop, Ghum, Darjeeling",
+            "Happy Valley Tea Estate, Lebong Cart Road, Darjeeling",
+            "Chowrasta Mall Road & Glenary's, Darjeeling",
+        ],
+        "ticket_portal": "https://asi.nic.in/",
+        "train_portal": "https://www.irctc.co.in/nget/train-search",
+        "hotels": {
+            "budget": [
+                {
+                    "name": "The Hosteller Darjeeling",
+                    "rating": "4.5/5 (★ Central Social)",
+                    "price": "₹1,200 - ₹2,000 / night",
+                    "location": "Near Chowrasta Mall Road",
+                    "type": "Backpacker Hostel & Private Rooms",
+                    "description": "5-minute walk to Mall Road, panoramic mountain views, clean dorms and private rooms, cafe."
+                }
+            ],
+            "value": [
+                {
+                    "name": "The Elgin, Darjeeling - Heritage Hotel",
+                    "rating": "4.7/5 (★ 125-Year-Old Summer Residence)",
+                    "price": "₹8,500 - ₹13,500 / night",
+                    "location": "H.D. Lama Road",
+                    "type": "British Colonial Heritage Mansion",
+                    "description": "Former summer residence of Maharaja of Cooch Behar; roaring fireplaces, period oak paneling, afternoon tea lounge."
+                }
+            ],
+            "luxury": [
+                {
+                    "name": "Windamere Hotel (Historic British Colonial Heritage)",
+                    "rating": "4.8/5 (★ Historic Landmark)",
+                    "price": "₹14,000 - ₹24,000 / night",
+                    "location": "Observatory Hill",
+                    "type": "Legendary Colonial Heritage Hotel",
+                    "description": "Perched on historic Observatory Hill with uninterrupted views of Kanchenjunga; candlelight dinners, British high tea, vintage charm."
+                }
+            ]
+        }
     }
+
 }
 
 # ----------------------------------------------------
@@ -874,6 +1371,21 @@ FOREIGN_DESTINATIONS = [
     "seoul", "hong kong", "mauritius", "nepal", "bhutan"
 ]
 
+POPULAR_TOURIST_DESTINATIONS = [
+    "jaipur", "delhi", "new delhi", "agra", "mumbai", "srinagar", "varanasi", "kashi", "banaras",
+    "udaipur", "goa", "kochi", "cochin", "amritsar", "rishikesh", "darjeeling", "manali", "shimla",
+    "leh", "ladakh", "bengaluru", "bangalore", "hyderabad", "chennai", "kolkata", "calcutta",
+    "pune", "ahmedabad", "ayodhya", "mysuru", "mysore", "jodhpur", "jaisalmer", "pushkar",
+    "mount abu", "khajuraho", "hampi", "madurai", "ooty", "kodaikanal", "munnar", "alleppey",
+    "alappuzha", "wayanad", "pondicherry", "puducherry", "shillong", "gangtok", "tawang",
+    "kaziranga", "andaman", "port blair", "haridwar", "nainital", "mussoorie", "dharamshala",
+    "mcleodganj", "spiti", "kutch", "rann of kutch", "ajmer", "bikaner", "gwalior", "bhopal",
+    "orchha", "bhubaneswar", "puri", "konark", "coorg", "kodagu", "gokarna", "rameshwaram",
+    "kanyakumari", "tirupati", "prayagraj", "allahabad", "bodh gaya", "gaya", "patna",
+    "vrindavan", "mathura", "lucknow", "guwahati", "cherrapunji", "gulmarg", "pahalgam", "sonamarg"
+]
+
+
 def has_keyword(query: str, keywords: List[str]) -> bool:
     """Checks if any keyword appears as a whole word or exact phrase in query."""
     for kw in keywords:
@@ -891,29 +1403,39 @@ def parse_travel_params(query: str, form_params: Optional[Dict[str, Any]] = None
     # 1. Destination
     dest_from_form = form_params.get("destination") or form_params.get("dest")
     destination = "jaipur"
-    if dest_from_form:
+    if dest_from_form and str(dest_from_form).lower() not in ("choose...", ""):
         dest_str = str(dest_from_form).strip().lower()
         for city in FLAGSHIP_CITIES.keys():
             if city in dest_str:
                 destination = city
                 break
         else:
-            for state in INDIAN_STATES:
-                if state in dest_str:
-                    destination = state
+            for city in POPULAR_TOURIST_DESTINATIONS:
+                if city in dest_str:
+                    destination = city
                     break
             else:
-                destination = dest_str
+                for state in INDIAN_STATES:
+                    if state in dest_str:
+                        destination = state
+                        break
+                else:
+                    destination = dest_str
     else:
         for city in FLAGSHIP_CITIES.keys():
             if re.search(r'\b' + re.escape(city) + r'\b', q_lower):
                 destination = city
                 break
         else:
-            for state in INDIAN_STATES:
-                if re.search(r'\b' + re.escape(state) + r'\b', q_lower):
-                    destination = state
+            for city in POPULAR_TOURIST_DESTINATIONS:
+                if re.search(r'\b' + re.escape(city) + r'\b', q_lower):
+                    destination = city
                     break
+            else:
+                for state in INDIAN_STATES:
+                    if re.search(r'\b' + re.escape(state) + r'\b', q_lower):
+                        destination = state
+                        break
 
     # 2. Days
     days = 3
@@ -1093,7 +1615,7 @@ Select a popular destination from the intelligence grid below or use the interac
 
 👉 **Reply with your destination (e.g. `Jaipur` or `Explore Jaipur`) or use the dropdown form below to generate your itinerary.**"""
 
-    resp = make_ai_response(output, get_tourism_card_payload("Jaipur"))
+    resp = make_ai_response(output, get_tourism_card_payload(None))
     return {
         "workflow_stage": "tourism_destinations",
         "final_output": resp["final_output"],
@@ -1373,6 +1895,47 @@ Generate an executable, highly engaging day-by-day travel dashboard:
   Precursor to the Taj Mahal built by Empress Nur Jahan for her father Mirzā Ghiyās Beg; acclaimed as a delicate jewel box of marble latticework (*jali*).
 * **05:00 PM – 06:30 PM: Akbar's Tomb at Sikandra**  
   Imposing tomb blending Islamic, Hindu, and Christian motifs surrounded by peaceful forested deer parks."""
+
+    elif dest in ("srinagar", "kashmir"):
+        itinerary_md = f"""## 🗓️ Day-by-Day Timeline Itinerary: Srinagar ({days} Days)
+
+### 🗓️ Day 1 — The Jewel of Kashmir: Dal Lake, Shikara & Mughal Heritage
+* **09:00 AM – 12:00 PM: Historic Shikara Ride across Dal Lake**  
+  Board a traditional Shikara at Boulevard Road. Glide across the tranquil waters through the floating lotus gardens, Char Chinar island, and the bustling floating artisan bazaar.
+* **12:30 PM – 02:00 PM: Traditional Kashmiri Wazwan Lunch**  
+  Savor an authentic lunch featuring *Rogan Josh*, *Rista*, *Dum Aloo*, and *Nadru Yakhni*, followed by warm saffron *Kahwa* tea with crushed almonds.
+* **02:30 PM – 04:30 PM: Shalimar Bagh & Nishat Bagh (Mughal Terraced Gardens)**  
+  Walk through Jahangir's 1619 garden masterpiece *Shalimar Bagh* (The Garden of Love) and *Nishat Bagh* (Garden of Joy), admiring tiered water channels, cascades, and ancient Chinar trees overlooking the lake.
+* **05:00 PM – 06:30 PM: Golden Hour Sunset from Pari Mahal**  
+  Ascend to the 17th-century *Pari Mahal* (Palace of Fairies), a terraced observatory offering an unrivaled panoramic sunset over Dal Lake and the Zabarwan range.
+* **07:30 PM: Traditional Dinner & Houseboat Experience**  
+  Overnight stay in a cedar-wood heritage houseboat with intricate walnut woodwork on Dal or Nigeen Lake.
+
+---
+
+### 🗓️ Day 2 — Sacred Sanctuaries, Old Srinagar & Master Crafts
+* **08:30 AM – 10:30 AM: Shankaracharya Temple**  
+  Visit the historic 9th-century stone temple atop Gopadri Hill (1,100 ft above the valley floor), offering panoramic views of the Pir Panjal range and Srinagar city.
+* **11:00 AM – 01:00 PM: Hazratbal Shrine & Northern Dal Lake**  
+  Visit Kashmir's holiest Muslim shrine on the scenic northern banks of Dal Lake, celebrated for its pristine white marble domes and serene waterfront promenades.
+* **01:00 PM – 02:00 PM: Historic Lunch at Ahdoos (Residency Road)**  
+  Dine at Kashmir's legendary heritage restaurant on the banks of the Jhelum River, renowned for classic Wazwan recipes since 1918.
+* **02:30 PM – 05:00 PM: Old City Heritage Circuit & Jama Masjid**  
+  Explore Srinagar's historic downtown (*Shahr-e-Khaas*), walking through the 14th-century *Jama Masjid* with its 378 monumental Himalayan deodar wooden pillars.
+* **05:00 PM – 07:30 PM: Authentic Kashmiri Crafts & Saffron Shopping**  
+  Shop for GI-tagged Pashmina shawls, Pampore pure saffron, hand-knotted silk carpets, walnut wood carvings, and paper-mâché art at government-certified craft emporiums."""
+        if days >= 3:
+            itinerary_md += f"""\n\n---
+
+### 🗓️ Day 3 — Mountain Excursion to Gulmarg ("Meadow of Flowers")
+* **08:00 AM – 10:00 AM: Scenic Alpine Drive to Gulmarg (50 km)**  
+  Drive through pine-clad mountain gorges and the Tangmarg foothills to the celebrated alpine resort of Gulmarg.
+* **10:30 AM – 02:30 PM: The World's Highest Gulmarg Gondola Ride**  
+  Ascend the famous two-phase cable car: Phase 1 to Kongdoori Valley (8,530 ft) and Phase 2 to Apharwat Peak (13,780 ft) for breathtaking snow vistas and alpine meadows.
+* **02:30 PM – 03:30 PM: Alpine Lunch at Gulmarg**  
+  Warm Kashmiri meal with hot Noon Chai (pink salted tea) and freshly baked breads.
+* **04:00 PM – 06:00 PM: Return to Srinagar**  
+  Scenic descent back to Srinagar; evening stroll along the vibrant Boulevard waterfront."""
 
     elif dest == "mumbai":
         itinerary_md = f"""## 🗓️ Day-by-Day Timeline Itinerary: Mumbai ({days} Days)
@@ -2047,12 +2610,17 @@ def supervisor_router(state: AgentState) -> AgentState:
     # 3. Check for Tourism Flow (Destinations, Form Submissions, Itineraries)
     matched_city = None
     dest_param = form_params.get("destination") or form_params.get("dest")
-    if dest_param:
+    if dest_param and str(dest_param).lower() not in ("choose...", ""):
         dest_str = str(dest_param).strip().lower()
         for city in FLAGSHIP_CITIES.keys():
             if city in dest_str:
                 matched_city = city
                 break
+        if not matched_city:
+            for city in POPULAR_TOURIST_DESTINATIONS:
+                if city in dest_str:
+                    matched_city = city
+                    break
         if not matched_city:
             for state_name in INDIAN_STATES:
                 if state_name in dest_str:
@@ -2063,6 +2631,11 @@ def supervisor_router(state: AgentState) -> AgentState:
 
     if not matched_city:
         for city in FLAGSHIP_CITIES.keys():
+            if re.search(r'\b' + re.escape(city) + r'\b', q_lower):
+                matched_city = city
+                break
+    if not matched_city:
+        for city in POPULAR_TOURIST_DESTINATIONS:
             if re.search(r'\b' + re.escape(city) + r'\b', q_lower):
                 matched_city = city
                 break
@@ -2079,26 +2652,27 @@ def supervisor_router(state: AgentState) -> AgentState:
 
     if matched_city or has_travel_context:
         has_duration = bool(
-            "days" in form_params or 
+            ("days" in form_params and str(form_params["days"]).lower() not in ("choose...", "")) or 
             re.search(r'\b(\d+)\s*(?:days?|day|d)\b', q_lower) or 
             "1-day" in q_lower or "2-day" in q_lower or "3-day" in q_lower or "5-day" in q_lower
         )
         has_people_or_budget = bool(
-            "travelers" in form_params or "budget" in form_params or
+            ("travelers" in form_params and str(form_params["travelers"]).lower() not in ("choose...", "")) or 
+            ("budget" in form_params and str(form_params["budget"]).lower() not in ("choose...", "")) or
             any(kw in q_lower for kw in ["people", "person", "adult", "family", "solo", "couple", "budget", "luxury", "mid-range", "standard"])
         )
 
-        # Smart Follow-up (e.g. "Jaipur 5 days" with missing travelers/budget)
+        # Smart Follow-up (e.g. "Srinagar 5 days" with missing travelers/budget)
         if matched_city and has_duration and not has_people_or_budget:
             parsed = parse_travel_params(clean_query, form_params)
             return {"workflow_stage": "tourism_followup", "entity_name": matched_city, "extracted_params": parsed}
 
-        # If user provided sufficient parameters or requested a plan
-        if matched_city and (has_duration or has_people_or_budget or "plan" in q_lower or "itinerary" in q_lower or form_params):
+        # If user provided sufficient parameters or requested a plan or clicked Generate Plan
+        if matched_city and (has_duration or has_people_or_budget or "plan" in q_lower or "itinerary" in q_lower or form_params.get("action") == "plan_trip"):
             parsed = parse_travel_params(clean_query, form_params)
             return {"workflow_stage": "tourism_planner", "entity_name": matched_city, "extracted_params": parsed}
 
-        # If user just selected a city (e.g. "Jaipur" or "Explore Jaipur")
+        # If user just selected a city (e.g. "Srinagar" or "Explore Srinagar")
         if matched_city and not has_duration and not has_people_or_budget:
             if matched_city in INDIAN_STATES and any(kw in q_lower for kw in ["economy", "culture", "profile", "tell me about"]):
                 return {"workflow_stage": "state_composite", "entity_name": matched_city, "extracted_params": None}
