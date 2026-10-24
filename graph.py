@@ -196,8 +196,8 @@ def get_landing_card_payload() -> MetadataContent:
                 label="Choose Intelligence Domain",
                 required=True,
                 options=[
-                    FormFieldOption(label="✈️ Option 2: Tourism & UNESCO Heritage", value="Tourism"),
                     FormFieldOption(label="🇮🇳 Option 1: Economy & Financial Markets", value="Economy"),
+                    FormFieldOption(label="✈️ Option 2: Tourism & UNESCO Heritage", value="Tourism"),
                     FormFieldOption(label="🎨 Option 3: Culture & Social Fabric", value="Culture"),
                     FormFieldOption(label="🚀 Option 4: Science & Future Tech", value="Science"),
                     FormFieldOption(label="💱 Option 5: Live Forex & Currency Converter", value="Currency"),
